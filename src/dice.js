@@ -9,6 +9,7 @@ export class D20Dice {
         this.body = null;
         this.settled = false;
         this.result = null;
+        this.resultRecorded = false; // Flag to prevent multiple recordings
 
         // D20 vertices (icosahedron)
         this.createDice();
@@ -34,25 +35,19 @@ export class D20Dice {
         // Add numbers as textures
         this.addNumbersToFaces();
 
-        // Use Sphere shape with proper radius matching visual - simpler and more reliable
-        const shape = new CANNON.Sphere(0.55); // Slightly larger than visual for better collision
+        // Use Sphere shape - MUST be larger for reliable collision
+        const shape = new CANNON.Sphere(0.6);
 
         this.body = new CANNON.Body({
             mass: 1,
             shape: shape,
-            linearDamping: 0.2,
-            angularDamping: 0.2,
+            linearDamping: 0.3,
+            angularDamping: 0.3,
             material: this.physicsWorld.createMaterial({
-                friction: 0.5,
+                friction: 0.6,
                 restitution: 0.5
-            }),
-            collisionFilterGroup: 1,
-            collisionFilterMask: -1
+            })
         });
-
-        // Enable CCD to prevent tunneling
-        this.body.ccdSpeedThreshold = 1;
-        this.body.ccdIterations = 5;
 
         this.physicsWorld.addBody(this.body);
     }
@@ -160,6 +155,7 @@ export class D20Dice {
         this.body.wakeUp();
         this.settled = false;
         this.result = null;
+        this.resultRecorded = false; // Reset recording flag
 
         this.scene.add(this.mesh);
     }
@@ -205,5 +201,13 @@ export class D20Dice {
 
     getResult() {
         return this.result;
+    }
+
+    hasRecordedResult() {
+        return this.resultRecorded;
+    }
+
+    markResultRecorded() {
+        this.resultRecorded = true;
     }
 }

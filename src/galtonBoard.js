@@ -143,9 +143,9 @@ export class GaltonBoard {
         });
 
         const rows = 12; // More rows for better distribution
-        const pegRadius = 0.2;
-        const horizontalSpacing = 0.9;
-        const verticalSpacing = 0.9;
+        const pegRadius = 0.25; // Larger pegs for better collision
+        const horizontalSpacing = 1.0;
+        const verticalSpacing = 1.0;
         const startY = 14;
 
         // Classic Galton board: staggered rows

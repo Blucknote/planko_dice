@@ -94,10 +94,11 @@ class GaltonBoardSimulator {
         this.activeDice.forEach((dice, index) => {
             dice.update();
 
-            // Check if dice has settled and record result
-            if (dice.isSettled() && dice.getResult() !== null) {
+            // Check if dice has settled and record result ONCE
+            if (dice.isSettled() && dice.getResult() !== null && !dice.hasRecordedResult()) {
                 const result = dice.getResult();
                 this.statistics.addRoll(result);
+                dice.markResultRecorded(); // Mark as recorded to prevent duplicates
 
                 // Remove dice after recording (optional - comment out to keep dice on board)
                 // setTimeout(() => {

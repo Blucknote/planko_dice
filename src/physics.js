@@ -3,17 +3,19 @@ import * as CANNON from 'cannon-es';
 export class PhysicsWorld {
     constructor() {
         this.world = new CANNON.World({
-            gravity: new CANNON.Vec3(0, -30, 0) // Stronger gravity for faster simulation
+            gravity: new CANNON.Vec3(0, -15, 0) // Reduced gravity for better collision
         });
 
         // Improve physics accuracy
-        this.world.defaultContactMaterial.friction = 0.3;
-        this.world.defaultContactMaterial.restitution = 0.5;
+        this.world.defaultContactMaterial.friction = 0.5;
+        this.world.defaultContactMaterial.restitution = 0.6;
+        this.world.defaultContactMaterial.contactEquationStiffness = 1e8;
+        this.world.defaultContactMaterial.contactEquationRelaxation = 3;
 
         // Broadphase for better performance
         this.world.broadphase = new CANNON.SAPBroadphase(this.world);
-        this.world.solver.iterations = 30; // Increased for better accuracy
-        this.world.solver.tolerance = 0.001;
+        this.world.solver.iterations = 50; // Much higher for better accuracy
+        this.world.solver.tolerance = 0.0001;
         this.world.allowSleep = true;
 
         this.bodies = [];
@@ -52,8 +54,8 @@ export class PhysicsWorld {
 
     step(deltaTime) {
         // Fixed timestep with max substeps to prevent tunneling
-        const fixedTimeStep = 1 / 120; // Smaller timestep for better accuracy
-        const maxSubSteps = 10;
+        const fixedTimeStep = 1 / 60; // Standard physics timestep
+        const maxSubSteps = 5;
         this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
     }
 }
