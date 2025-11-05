@@ -18,14 +18,12 @@ export class D20Dice {
         // Create icosahedron geometry for d20
         const geometry = new THREE.IcosahedronGeometry(0.5, 0);
 
-        // Improved material with better visual appearance
+        // Improved material
         const material = new THREE.MeshStandardMaterial({
-            color: 0x4488ff,
-            metalness: 0.1,
-            roughness: 0.3,
-            flatShading: true,
-            emissive: 0x112244,
-            emissiveIntensity: 0.2
+            color: 0x2255cc,
+            metalness: 0.2,
+            roughness: 0.4,
+            flatShading: true
         });
 
         // Create mesh
@@ -36,55 +34,25 @@ export class D20Dice {
         // Add numbers as textures
         this.addNumbersToFaces();
 
-        // Create physics body using actual icosahedron shape
-        const vertices = [];
-        const faces = [];
-
-        // Extract vertices from geometry
-        const positionAttribute = geometry.getAttribute('position');
-        const uniqueVertices = [];
-        const vertexMap = new Map();
-
-        for (let i = 0; i < positionAttribute.count; i++) {
-            const x = positionAttribute.getX(i);
-            const y = positionAttribute.getY(i);
-            const z = positionAttribute.getZ(i);
-            const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
-
-            if (!vertexMap.has(key)) {
-                vertexMap.set(key, uniqueVertices.length);
-                uniqueVertices.push(new CANNON.Vec3(x, y, z));
-            }
-        }
-
-        // Extract faces
-        for (let i = 0; i < positionAttribute.count; i += 3) {
-            const v1Key = `${positionAttribute.getX(i).toFixed(6)},${positionAttribute.getY(i).toFixed(6)},${positionAttribute.getZ(i).toFixed(6)}`;
-            const v2Key = `${positionAttribute.getX(i+1).toFixed(6)},${positionAttribute.getY(i+1).toFixed(6)},${positionAttribute.getZ(i+1).toFixed(6)}`;
-            const v3Key = `${positionAttribute.getX(i+2).toFixed(6)},${positionAttribute.getY(i+2).toFixed(6)},${positionAttribute.getZ(i+2).toFixed(6)}`;
-
-            faces.push([
-                vertexMap.get(v1Key),
-                vertexMap.get(v2Key),
-                vertexMap.get(v3Key)
-            ]);
-        }
-
-        const shape = new CANNON.ConvexPolyhedron({
-            vertices: uniqueVertices,
-            faces: faces
-        });
+        // Use Sphere shape with proper radius matching visual - simpler and more reliable
+        const shape = new CANNON.Sphere(0.55); // Slightly larger than visual for better collision
 
         this.body = new CANNON.Body({
             mass: 1,
             shape: shape,
-            linearDamping: 0.1,
-            angularDamping: 0.1,
+            linearDamping: 0.2,
+            angularDamping: 0.2,
             material: this.physicsWorld.createMaterial({
-                friction: 0.4,
-                restitution: 0.6
-            })
+                friction: 0.5,
+                restitution: 0.5
+            }),
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1
         });
+
+        // Enable CCD to prevent tunneling
+        this.body.ccdSpeedThreshold = 1;
+        this.body.ccdIterations = 5;
 
         this.physicsWorld.addBody(this.body);
     }
@@ -138,17 +106,14 @@ export class D20Dice {
     }
 
     createNumberLabels() {
-        // Create canvas for each number
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-
         this.numberSprites = [];
 
         for (let i = 0; i < 20; i++) {
-            // Clear canvas
-            ctx.clearRect(0, 0, 128, 128);
+            // Create SEPARATE canvas for EACH number to avoid texture override bug
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
 
             // Draw number
             ctx.fillStyle = 'white';
@@ -157,19 +122,21 @@ export class D20Dice {
             ctx.textBaseline = 'middle';
             ctx.fillText((i + 1).toString(), 64, 64);
 
-            // Create texture
+            // Create texture immediately after drawing
             const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true; // Force update
+
             const spriteMaterial = new THREE.SpriteMaterial({
                 map: texture,
                 transparent: true,
-                opacity: 0.9
+                opacity: 1.0
             });
             const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(0.3, 0.3, 1);
+            sprite.scale.set(0.35, 0.35, 1);
 
             // Position sprite on face
             if (this.faceNormals[i]) {
-                const pos = this.faceNormals[i].center.clone().multiplyScalar(1.1);
+                const pos = this.faceNormals[i].center.clone().multiplyScalar(1.15);
                 sprite.position.copy(pos);
             }
 
