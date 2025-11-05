@@ -1,0 +1,19 @@
+{
+  "name": "galton-board-dice-simulator",
+  "version": "1.0.0",
+  "description": "3D Galton Board Simulator for testing d20 dice randomness",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.11",
+    "terser": "^5.36.0"
+  }
+}
