@@ -11,8 +11,9 @@ export class PhysicsWorld {
         this.world.defaultContactMaterial.restitution = 0.5;
 
         // Broadphase for better performance
-        this.world.broadphase = new CANNON.NaiveBroadphase();
-        this.world.solver.iterations = 20;
+        this.world.broadphase = new CANNON.SAPBroadphase(this.world);
+        this.world.solver.iterations = 30; // Increased for better accuracy
+        this.world.solver.tolerance = 0.001;
         this.world.allowSleep = true;
 
         this.bodies = [];
@@ -50,6 +51,9 @@ export class PhysicsWorld {
     }
 
     step(deltaTime) {
-        this.world.step(1 / 60, deltaTime, 3);
+        // Fixed timestep with max substeps to prevent tunneling
+        const fixedTimeStep = 1 / 120; // Smaller timestep for better accuracy
+        const maxSubSteps = 10;
+        this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
     }
 }

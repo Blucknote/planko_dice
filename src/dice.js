@@ -18,35 +18,71 @@ export class D20Dice {
         // Create icosahedron geometry for d20
         const geometry = new THREE.IcosahedronGeometry(0.5, 0);
 
-        // Create materials with numbers
-        const materials = [];
-        for (let i = 0; i < 20; i++) {
-            materials.push(new THREE.MeshStandardMaterial({
-                color: this.getColorForNumber(i + 1),
-                metalness: 0.3,
-                roughness: 0.4,
-                flatShading: true
-            }));
-        }
+        // Improved material with better visual appearance
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x4488ff,
+            metalness: 0.1,
+            roughness: 0.3,
+            flatShading: true,
+            emissive: 0x112244,
+            emissiveIntensity: 0.2
+        });
 
-        // Create mesh with face materials
-        this.mesh = new THREE.Mesh(geometry, materials);
+        // Create mesh
+        this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
 
         // Add numbers as textures
         this.addNumbersToFaces();
 
-        // Create physics body
-        const shape = new CANNON.Sphere(0.5); // Approximate with sphere for better rolling
+        // Create physics body using actual icosahedron shape
+        const vertices = [];
+        const faces = [];
+
+        // Extract vertices from geometry
+        const positionAttribute = geometry.getAttribute('position');
+        const uniqueVertices = [];
+        const vertexMap = new Map();
+
+        for (let i = 0; i < positionAttribute.count; i++) {
+            const x = positionAttribute.getX(i);
+            const y = positionAttribute.getY(i);
+            const z = positionAttribute.getZ(i);
+            const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
+
+            if (!vertexMap.has(key)) {
+                vertexMap.set(key, uniqueVertices.length);
+                uniqueVertices.push(new CANNON.Vec3(x, y, z));
+            }
+        }
+
+        // Extract faces
+        for (let i = 0; i < positionAttribute.count; i += 3) {
+            const v1Key = `${positionAttribute.getX(i).toFixed(6)},${positionAttribute.getY(i).toFixed(6)},${positionAttribute.getZ(i).toFixed(6)}`;
+            const v2Key = `${positionAttribute.getX(i+1).toFixed(6)},${positionAttribute.getY(i+1).toFixed(6)},${positionAttribute.getZ(i+1).toFixed(6)}`;
+            const v3Key = `${positionAttribute.getX(i+2).toFixed(6)},${positionAttribute.getY(i+2).toFixed(6)},${positionAttribute.getZ(i+2).toFixed(6)}`;
+
+            faces.push([
+                vertexMap.get(v1Key),
+                vertexMap.get(v2Key),
+                vertexMap.get(v3Key)
+            ]);
+        }
+
+        const shape = new CANNON.ConvexPolyhedron({
+            vertices: uniqueVertices,
+            faces: faces
+        });
+
         this.body = new CANNON.Body({
             mass: 1,
             shape: shape,
-            linearDamping: 0.3,
-            angularDamping: 0.3,
+            linearDamping: 0.1,
+            angularDamping: 0.1,
             material: this.physicsWorld.createMaterial({
-                friction: 0.5,
-                restitution: 0.4
+                friction: 0.4,
+                restitution: 0.6
             })
         });
 
