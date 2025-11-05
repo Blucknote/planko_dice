@@ -9,7 +9,6 @@ export class Statistics {
             this.rolls[i] = 0;
         }
 
-        this.totalRollsElement = document.getElementById('total-rolls');
         this.distributionElement = document.getElementById('distribution');
         this.chartCanvas = document.getElementById('chart');
         this.chartCtx = this.chartCanvas.getContext('2d');
@@ -56,9 +55,6 @@ export class Statistics {
     }
 
     updateDisplay() {
-        // Update total
-        this.totalRollsElement.textContent = `Total Rolls: ${this.totalRolls}`;
-
         // Update distribution bars
         this.distributionElement.innerHTML = '';
 

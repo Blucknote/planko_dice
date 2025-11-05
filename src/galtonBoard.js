@@ -136,24 +136,32 @@ export class GaltonBoard {
     createPegs() {
         const pegMaterial = new THREE.MeshStandardMaterial({
             color: 0xffd700,
-            roughness: 0.4,
-            metalness: 0.6
+            roughness: 0.3,
+            metalness: 0.7,
+            emissive: 0x332200,
+            emissiveIntensity: 0.1
         });
 
-        const rows = 10;
-        const pegRadius = 0.25; // Increased from 0.15
-        const spacing = 1.2;
-        const startY = 13;
+        const rows = 12; // More rows for better distribution
+        const pegRadius = 0.2;
+        const horizontalSpacing = 0.9;
+        const verticalSpacing = 0.9;
+        const startY = 14;
 
+        // Classic Galton board: staggered rows
         for (let row = 0; row < rows; row++) {
-            const y = startY - row * spacing;
-            const pegsInRow = row + 3; // Start with 3 pegs, increase each row
-            const totalWidth = (pegsInRow - 1) * spacing;
-            const startX = -totalWidth / 2;
+            const y = startY - row * verticalSpacing;
+
+            // Staggered pattern: odd rows are offset by half spacing
+            const isOddRow = row % 2 === 1;
+            const pegsInRow = 8; // Fixed number of pegs per row
+            const offset = isOddRow ? horizontalSpacing / 2 : 0;
+            const totalWidth = (pegsInRow - 1) * horizontalSpacing;
+            const startX = -totalWidth / 2 + offset;
 
             for (let col = 0; col < pegsInRow; col++) {
-                const x = startX + col * spacing;
-                const z = 0; // No random depth to keep physics simple
+                const x = startX + col * horizontalSpacing;
+                const z = 0;
 
                 this.createPeg(x, y, z, pegRadius, pegMaterial);
             }
