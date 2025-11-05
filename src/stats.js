@@ -2,6 +2,7 @@ export class Statistics {
     constructor() {
         this.rolls = {};
         this.totalRolls = 0;
+        this.lastRoll = null;
 
         // Initialize all d20 numbers
         for (let i = 1; i <= 20; i++) {
@@ -12,6 +13,7 @@ export class Statistics {
         this.distributionElement = document.getElementById('distribution');
         this.chartCanvas = document.getElementById('chart');
         this.chartCtx = this.chartCanvas.getContext('2d');
+        this.currentNumberElement = document.getElementById('number-value');
 
         this.updateDisplay();
     }
@@ -20,8 +22,29 @@ export class Statistics {
         if (number >= 1 && number <= 20) {
             this.rolls[number]++;
             this.totalRolls++;
+            this.lastRoll = number;
             this.updateDisplay();
+            this.updateCurrentNumber(number);
         }
+    }
+
+    updateCurrentNumber(number) {
+        this.currentNumberElement.textContent = number;
+
+        // Add animation effect
+        this.currentNumberElement.style.transform = 'scale(1.2)';
+        this.currentNumberElement.style.color = this.getColorForNumber(number);
+
+        setTimeout(() => {
+            this.currentNumberElement.style.transform = 'scale(1)';
+        }, 200);
+    }
+
+    getColorForNumber(num) {
+        // Color based on value: low = blue, mid = yellow, high = red
+        if (num <= 7) return '#6366f1'; // Low (blue)
+        if (num <= 14) return '#ffd700'; // Mid (gold)
+        return '#ef4444'; // High (red)
     }
 
     reset() {
