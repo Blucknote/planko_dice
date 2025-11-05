@@ -77,6 +77,39 @@ body {
     transform: translateY(0);
 }
 
+#current-number {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    padding: 30px 60px;
+    border-radius: 20px;
+    backdrop-filter: blur(15px);
+    z-index: 10;
+    text-align: center;
+    border: 3px solid #ffd700;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+#number-label {
+    font-size: 20px;
+    color: #ccc;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#number-value {
+    font-size: 96px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
+    line-height: 1;
+    font-family: 'Arial Black', sans-serif;
+    transition: transform 0.2s ease, color 0.3s ease;
+}
+
 #stats-panel {
     position: absolute;
     top: 20px;

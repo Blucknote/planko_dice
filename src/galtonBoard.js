@@ -25,7 +25,7 @@ export class GaltonBoard {
     }
 
     createFloor() {
-        const floorGeometry = new THREE.BoxGeometry(15, 0.5, 8);
+        const floorGeometry = new THREE.BoxGeometry(18, 0.5, 5);
         const floorMaterial = new THREE.MeshStandardMaterial({
             color: 0x2a2a3e,
             roughness: 0.8,
@@ -36,7 +36,7 @@ export class GaltonBoard {
         floorMesh.receiveShadow = true;
         this.scene.add(floorMesh);
 
-        const floorShape = new CANNON.Box(new CANNON.Vec3(7.5, 0.25, 4));
+        const floorShape = new CANNON.Box(new CANNON.Vec3(9, 0.25, 2.5));
         const floorBody = new CANNON.Body({
             mass: 0,
             shape: floorShape,
@@ -59,38 +59,77 @@ export class GaltonBoard {
         });
 
         // Back wall
-        const backWallGeometry = new THREE.BoxGeometry(15, 15, 0.5);
+        const backWallGeometry = new THREE.BoxGeometry(18, 20, 0.5);
         const backWallMesh = new THREE.Mesh(backWallGeometry, wallMaterial);
-        backWallMesh.position.set(0, 7.5, -4);
+        backWallMesh.position.set(0, 10, -2.5);
         backWallMesh.receiveShadow = true;
         this.scene.add(backWallMesh);
 
-        const backWallShape = new CANNON.Box(new CANNON.Vec3(7.5, 7.5, 0.25));
-        const backWallBody = new CANNON.Body({ mass: 0, shape: backWallShape });
-        backWallBody.position.set(0, 7.5, -4);
+        const backWallShape = new CANNON.Box(new CANNON.Vec3(9, 10, 0.25));
+        const backWallBody = new CANNON.Body({
+            mass: 0,
+            shape: backWallShape,
+            material: this.physicsWorld.createMaterial({
+                friction: 0.3,
+                restitution: 0.5
+            })
+        });
+        backWallBody.position.set(0, 10, -2.5);
         this.physicsWorld.addBody(backWallBody);
 
+        // Front wall (transparent)
+        const frontWallMesh = new THREE.Mesh(backWallGeometry, wallMaterial);
+        frontWallMesh.position.set(0, 10, 2.5);
+        frontWallMesh.receiveShadow = true;
+        this.scene.add(frontWallMesh);
+
+        const frontWallShape = new CANNON.Box(new CANNON.Vec3(9, 10, 0.25));
+        const frontWallBody = new CANNON.Body({
+            mass: 0,
+            shape: frontWallShape,
+            material: this.physicsWorld.createMaterial({
+                friction: 0.3,
+                restitution: 0.5
+            })
+        });
+        frontWallBody.position.set(0, 10, 2.5);
+        this.physicsWorld.addBody(frontWallBody);
+
         // Left wall
-        const sideWallGeometry = new THREE.BoxGeometry(0.5, 15, 8);
+        const sideWallGeometry = new THREE.BoxGeometry(0.5, 20, 5);
         const leftWallMesh = new THREE.Mesh(sideWallGeometry, wallMaterial);
-        leftWallMesh.position.set(-7.5, 7.5, 0);
+        leftWallMesh.position.set(-9, 10, 0);
         leftWallMesh.receiveShadow = true;
         this.scene.add(leftWallMesh);
 
-        const leftWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 7.5, 4));
-        const leftWallBody = new CANNON.Body({ mass: 0, shape: leftWallShape });
-        leftWallBody.position.set(-7.5, 7.5, 0);
+        const leftWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 10, 2.5));
+        const leftWallBody = new CANNON.Body({
+            mass: 0,
+            shape: leftWallShape,
+            material: this.physicsWorld.createMaterial({
+                friction: 0.3,
+                restitution: 0.5
+            })
+        });
+        leftWallBody.position.set(-9, 10, 0);
         this.physicsWorld.addBody(leftWallBody);
 
         // Right wall
         const rightWallMesh = new THREE.Mesh(sideWallGeometry, wallMaterial);
-        rightWallMesh.position.set(7.5, 7.5, 0);
+        rightWallMesh.position.set(9, 10, 0);
         rightWallMesh.receiveShadow = true;
         this.scene.add(rightWallMesh);
 
-        const rightWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 7.5, 4));
-        const rightWallBody = new CANNON.Body({ mass: 0, shape: rightWallShape });
-        rightWallBody.position.set(7.5, 7.5, 0);
+        const rightWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 10, 2.5));
+        const rightWallBody = new CANNON.Body({
+            mass: 0,
+            shape: rightWallShape,
+            material: this.physicsWorld.createMaterial({
+                friction: 0.3,
+                restitution: 0.5
+            })
+        });
+        rightWallBody.position.set(9, 10, 0);
         this.physicsWorld.addBody(rightWallBody);
     }
 
@@ -102,7 +141,7 @@ export class GaltonBoard {
         });
 
         const rows = 10;
-        const pegRadius = 0.15;
+        const pegRadius = 0.25; // Increased from 0.15
         const spacing = 1.2;
         const startY = 13;
 
@@ -114,7 +153,7 @@ export class GaltonBoard {
 
             for (let col = 0; col < pegsInRow; col++) {
                 const x = startX + col * spacing;
-                const z = (Math.random() - 0.5) * 0.3; // Slight random depth for 3D effect
+                const z = 0; // No random depth to keep physics simple
 
                 this.createPeg(x, y, z, pegRadius, pegMaterial);
             }
@@ -122,22 +161,22 @@ export class GaltonBoard {
     }
 
     createPeg(x, y, z, radius, material) {
-        // Visual mesh
-        const geometry = new THREE.CylinderGeometry(radius, radius, 1.5, 8);
+        // Visual mesh - use sphere for better physics
+        const geometry = new THREE.SphereGeometry(radius, 16, 16);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(x, y, z);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.scene.add(mesh);
 
-        // Physics body
-        const shape = new CANNON.Cylinder(radius, radius, 1.5, 8);
+        // Physics body - sphere for reliable collision
+        const shape = new CANNON.Sphere(radius);
         const body = new CANNON.Body({
             mass: 0,
             shape: shape,
             material: this.physicsWorld.createMaterial({
                 friction: 0.1,
-                restitution: 0.7
+                restitution: 0.8
             })
         });
         body.position.set(x, y, z);
