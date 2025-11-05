@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galton Board - D20 Dice Randomness Simulator</title>
+    <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+    <div id="app">
+        <div id="info">
+            <h1>Galton Board - D20 Randomness Test</h1>
+            <p>Click "Add Dice" to drop a d20 die through the Galton board</p>
+        </div>
+
+        <div id="controls">
+            <button id="addDice">Add Dice</button>
+            <button id="add10Dice">Add 10 Dice</button>
+            <button id="reset">Reset Stats</button>
+            <button id="clearDice">Clear Dice</button>
+        </div>
+
+        <div id="stats-panel">
+            <h2>Statistics</h2>
+            <div id="total-rolls">Total Rolls: 0</div>
+            <div id="distribution"></div>
+            <canvas id="chart"></canvas>
+        </div>
+
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
