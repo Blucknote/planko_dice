@@ -3,6 +3,7 @@ import { PhysicsWorld } from './physics.js';
 import { D20Dice } from './dice.js';
 import { GaltonBoard } from './galtonBoard.js';
 import { Statistics } from './stats.js';
+import * as CANNON from 'cannon-es';
 
 class GaltonBoardSimulator {
     constructor() {
@@ -11,8 +12,11 @@ class GaltonBoardSimulator {
         this.physics = new PhysicsWorld();
         this.statistics = new Statistics();
 
-        // Create Galton board
+        // Create Galton board first (creates peg material)
         this.galtonBoard = new GaltonBoard(this.physics, this.scene);
+
+        // Create a dummy dice to initialize dice material
+        this.initializeMaterials();
 
         // Dice management
         this.activeDice = [];
@@ -24,6 +28,29 @@ class GaltonBoardSimulator {
         // Animation loop
         this.clock = performance.now();
         this.animate();
+    }
+
+    initializeMaterials() {
+        // Create a temporary dice to initialize the shared dice material
+        const tempDice = new D20Dice(this.physics, this.scene);
+        tempDice.remove();
+        this.activeDice = [];
+
+        // Now create ContactMaterial between dice and pegs
+        if (D20Dice.diceMaterial && GaltonBoard.pegMaterial) {
+            const dicePegContact = new CANNON.ContactMaterial(
+                D20Dice.diceMaterial,
+                GaltonBoard.pegMaterial,
+                {
+                    friction: 0.3,
+                    restitution: 0.7, // Good bounce off pegs
+                    contactEquationStiffness: 1e8,
+                    contactEquationRelaxation: 3
+                }
+            );
+            this.physics.world.addContactMaterial(dicePegContact);
+            console.log('ContactMaterial created between dice and pegs');
+        }
     }
 
     setupControls() {
@@ -94,10 +121,11 @@ class GaltonBoardSimulator {
         this.activeDice.forEach((dice, index) => {
             dice.update();
 
-            // Check if dice has settled and record result
-            if (dice.isSettled() && dice.getResult() !== null) {
+            // Check if dice has settled and record result (only once per dice)
+            if (dice.isSettled() && dice.getResult() !== null && !dice.resultRecorded) {
                 const result = dice.getResult();
                 this.statistics.addRoll(result);
+                dice.resultRecorded = true; // Mark as recorded to prevent duplicates
 
                 // Remove dice after recording (optional - comment out to keep dice on board)
                 // setTimeout(() => {

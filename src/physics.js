@@ -3,20 +3,35 @@ import * as CANNON from 'cannon-es';
 export class PhysicsWorld {
     constructor() {
         this.world = new CANNON.World({
-            gravity: new CANNON.Vec3(0, -30, 0) // Stronger gravity for faster simulation
+            gravity: new CANNON.Vec3(0, -25, 0) // Moderate gravity
         });
 
         // Improve physics accuracy
         this.world.defaultContactMaterial.friction = 0.3;
         this.world.defaultContactMaterial.restitution = 0.5;
+        this.world.defaultContactMaterial.contactEquationStiffness = 1e8;
+        this.world.defaultContactMaterial.contactEquationRelaxation = 3;
 
-        // Broadphase for better performance
-        this.world.broadphase = new CANNON.SAPBroadphase(this.world);
-        this.world.solver.iterations = 30; // Increased for better accuracy
-        this.world.solver.tolerance = 0.001;
+        // Broadphase for better performance - NaiveBroadphase is more reliable for small scenes
+        this.world.broadphase = new CANNON.NaiveBroadphase();
+        this.world.broadphase.useBoundingBoxes = true;
+
+        // Solver settings for better collision response
+        this.world.solver.iterations = 50; // High for accurate collision response
+        this.world.solver.tolerance = 0.0001;
         this.world.allowSleep = true;
 
         this.bodies = [];
+        this.materials = {};
+    }
+
+    // Store and retrieve materials by name for ContactMaterial creation
+    registerMaterial(name, material) {
+        this.materials[name] = material;
+    }
+
+    getMaterial(name) {
+        return this.materials[name];
     }
 
     createMaterial(options = {}) {
