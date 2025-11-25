@@ -162,16 +162,17 @@ export class GaltonBoard {
         });
 
         const rows = 12; // More rows for better distribution
-        const pegRadius = 0.25; // Slightly larger pegs for better collision
-        const horizontalSpacing = 1.0; // Spacing tuned for d20 size
-        const verticalSpacing = 1.0;
+        const pegRadius = 0.3; // Larger pegs for reliable collision with dice (radius 0.55)
+        const horizontalSpacing = 1.2; // Wider spacing - dice needs room to fall between pegs
+        const verticalSpacing = 1.1; // Vertical spacing for natural bouncing
         const startY = 13;
 
-        // Classic Galton board: staggered rows
+        // Classic Galton board: staggered rows (Planko/Plinko pattern)
         for (let row = 0; row < rows; row++) {
             const y = startY - row * verticalSpacing;
 
             // Staggered pattern: odd rows are offset by half spacing
+            // This creates the classic Planko left-right branching
             const isOddRow = row % 2 === 1;
             const pegsInRow = 8; // Fixed number of pegs per row
             const offset = isOddRow ? horizontalSpacing / 2 : 0;
@@ -180,7 +181,7 @@ export class GaltonBoard {
 
             for (let col = 0; col < pegsInRow; col++) {
                 const x = startX + col * horizontalSpacing;
-                const z = 0;
+                const z = 0; // All pegs at Z=0 for 2D Planko
 
                 this.createPeg(x, y, z, pegRadius, pegMaterial);
             }
@@ -188,21 +189,18 @@ export class GaltonBoard {
     }
 
     createPeg(x, y, z, radius, material) {
-        // Calculate cylinder height to span the containment depth
-        const cylinderHeight = 3.5; // Span most of the Z depth (walls at z=±1.5)
-
-        // Visual mesh - use cylinder to span Z depth
-        const geometry = new THREE.CylinderGeometry(radius, radius, cylinderHeight, 16);
+        // Visual mesh - simple sphere for clean Planko look
+        // Using sphere for both visual and physics gives reliable collisions
+        const geometry = new THREE.SphereGeometry(radius, 16, 16);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(x, y, z);
-        // Rotate cylinder to align along Z axis
-        mesh.rotation.x = Math.PI / 2;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.scene.add(mesh);
 
-        // Physics body - cylinder for reliable collision spanning Z depth
-        const shape = new CANNON.Cylinder(radius, radius, cylinderHeight, 16);
+        // Physics body - SPHERE for reliable collision with sphere dice
+        // Sphere-sphere collisions are the most reliable in physics engines
+        const shape = new CANNON.Sphere(radius);
         const body = new CANNON.Body({
             mass: 0,
             shape: shape,
@@ -212,8 +210,6 @@ export class GaltonBoard {
             type: CANNON.Body.STATIC
         });
         body.position.set(x, y, z);
-        // Rotate cylinder to align along Z axis (Cannon-es cylinders are Y-aligned by default)
-        body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
         this.physicsWorld.addBody(body);
 
         this.pegs.push({ mesh, body });
@@ -320,7 +316,7 @@ export class GaltonBoard {
         return {
             x: (Math.random() - 0.5) * 2, // Spawn in center area with slight variation
             y: 15,
-            z: (Math.random() - 0.5) * 0.5 // Tighter Z range since walls are closer
+            z: 0  // Always spawn at Z=0 for 2D Planko behavior
         };
     }
 }
