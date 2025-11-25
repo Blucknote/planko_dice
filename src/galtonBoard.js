@@ -36,7 +36,9 @@ export class GaltonBoard {
     }
 
     createFloor() {
-        const floorGeometry = new THREE.BoxGeometry(18, 0.5, 5);
+        // Floor depth matches containment (3 units total)
+        const floorDepth = 3;
+        const floorGeometry = new THREE.BoxGeometry(18, 0.5, floorDepth);
         const floorMaterial = new THREE.MeshStandardMaterial({
             color: 0x2a2a3e,
             roughness: 0.8,
@@ -47,7 +49,7 @@ export class GaltonBoard {
         floorMesh.receiveShadow = true;
         this.scene.add(floorMesh);
 
-        const floorShape = new CANNON.Box(new CANNON.Vec3(9, 0.25, 2.5));
+        const floorShape = new CANNON.Box(new CANNON.Vec3(9, 0.25, floorDepth / 2));
         const floorBody = new CANNON.Body({
             mass: 0,
             shape: floorShape,
@@ -69,10 +71,13 @@ export class GaltonBoard {
             opacity: 0.6
         });
 
+        // Narrower depth to keep dice near pegs (dice radius ~0.55)
+        const wallZPosition = 1.5; // Closer walls for better containment
+
         // Back wall
         const backWallGeometry = new THREE.BoxGeometry(18, 20, 0.5);
         const backWallMesh = new THREE.Mesh(backWallGeometry, wallMaterial);
-        backWallMesh.position.set(0, 10, -2.5);
+        backWallMesh.position.set(0, 10, -wallZPosition);
         backWallMesh.receiveShadow = true;
         this.scene.add(backWallMesh);
 
@@ -85,12 +90,12 @@ export class GaltonBoard {
                 restitution: 0.5
             })
         });
-        backWallBody.position.set(0, 10, -2.5);
+        backWallBody.position.set(0, 10, -wallZPosition);
         this.physicsWorld.addBody(backWallBody);
 
         // Front wall (transparent)
         const frontWallMesh = new THREE.Mesh(backWallGeometry, wallMaterial);
-        frontWallMesh.position.set(0, 10, 2.5);
+        frontWallMesh.position.set(0, 10, wallZPosition);
         frontWallMesh.receiveShadow = true;
         this.scene.add(frontWallMesh);
 
@@ -103,17 +108,20 @@ export class GaltonBoard {
                 restitution: 0.5
             })
         });
-        frontWallBody.position.set(0, 10, 2.5);
+        frontWallBody.position.set(0, 10, wallZPosition);
         this.physicsWorld.addBody(frontWallBody);
 
+        // Side wall depth matches new containment (wallZPosition * 2 + wall thickness)
+        const sideWallDepth = wallZPosition * 2;
+
         // Left wall
-        const sideWallGeometry = new THREE.BoxGeometry(0.5, 20, 5);
+        const sideWallGeometry = new THREE.BoxGeometry(0.5, 20, sideWallDepth);
         const leftWallMesh = new THREE.Mesh(sideWallGeometry, wallMaterial);
         leftWallMesh.position.set(-9, 10, 0);
         leftWallMesh.receiveShadow = true;
         this.scene.add(leftWallMesh);
 
-        const leftWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 10, 2.5));
+        const leftWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 10, sideWallDepth / 2));
         const leftWallBody = new CANNON.Body({
             mass: 0,
             shape: leftWallShape,
@@ -131,7 +139,7 @@ export class GaltonBoard {
         rightWallMesh.receiveShadow = true;
         this.scene.add(rightWallMesh);
 
-        const rightWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 10, 2.5));
+        const rightWallShape = new CANNON.Box(new CANNON.Vec3(0.25, 10, sideWallDepth / 2));
         const rightWallBody = new CANNON.Body({
             mass: 0,
             shape: rightWallShape,
@@ -180,16 +188,21 @@ export class GaltonBoard {
     }
 
     createPeg(x, y, z, radius, material) {
-        // Visual mesh - use sphere for better physics
-        const geometry = new THREE.SphereGeometry(radius, 16, 16);
+        // Calculate cylinder height to span the containment depth
+        const cylinderHeight = 3.5; // Span most of the Z depth (walls at z=±1.5)
+
+        // Visual mesh - use cylinder to span Z depth
+        const geometry = new THREE.CylinderGeometry(radius, radius, cylinderHeight, 16);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(x, y, z);
+        // Rotate cylinder to align along Z axis
+        mesh.rotation.x = Math.PI / 2;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.scene.add(mesh);
 
-        // Physics body - sphere for reliable collision
-        const shape = new CANNON.Sphere(radius);
+        // Physics body - cylinder for reliable collision spanning Z depth
+        const shape = new CANNON.Cylinder(radius, radius, cylinderHeight, 16);
         const body = new CANNON.Body({
             mass: 0,
             shape: shape,
@@ -199,6 +212,8 @@ export class GaltonBoard {
             type: CANNON.Body.STATIC
         });
         body.position.set(x, y, z);
+        // Rotate cylinder to align along Z axis (Cannon-es cylinders are Y-aligned by default)
+        body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
         this.physicsWorld.addBody(body);
 
         this.pegs.push({ mesh, body });
@@ -251,13 +266,61 @@ export class GaltonBoard {
         const dividerBody = new CANNON.Body({ mass: 0, shape: dividerShape });
         dividerBody.position.set(startX + numBins * binWidth, binHeight / 2, 0);
         this.physicsWorld.addBody(dividerBody);
+
+        // Add funnel walls to guide dice from outer walls into bin area
+        this.createFunnelWalls(binMaterial, binDepth);
+    }
+
+    createFunnelWalls(material, depth) {
+        // Funnel walls guide dice from walls (at x=±9) into bins (at x=±5.5)
+        // Positioned below the pegs (which end around y=2) down to the bins
+        const wallEdge = 9; // Wall position
+        const binEdge = 5.5; // Bin edge position
+        const funnelTop = 2; // Just below pegs (last row at y=2)
+        const funnelBottom = 0; // Floor level
+        const funnelHeight = funnelTop - funnelBottom;
+        const funnelWidth = wallEdge - binEdge; // 3.5 units
+
+        // Calculate diagonal length and angle
+        const diagonalLength = Math.sqrt(funnelHeight * funnelHeight + funnelWidth * funnelWidth);
+        const angle = Math.atan2(funnelWidth, funnelHeight); // Angle from vertical
+
+        // Left funnel wall
+        const leftFunnelGeometry = new THREE.BoxGeometry(0.3, diagonalLength, depth);
+        const leftFunnelMesh = new THREE.Mesh(leftFunnelGeometry, material);
+        leftFunnelMesh.position.set(-(binEdge + funnelWidth / 2), funnelBottom + funnelHeight / 2, 0);
+        leftFunnelMesh.rotation.z = -angle; // Rotate to create slope
+        leftFunnelMesh.receiveShadow = true;
+        leftFunnelMesh.castShadow = true;
+        this.scene.add(leftFunnelMesh);
+
+        const leftFunnelShape = new CANNON.Box(new CANNON.Vec3(0.15, diagonalLength / 2, depth / 2));
+        const leftFunnelBody = new CANNON.Body({ mass: 0, shape: leftFunnelShape });
+        leftFunnelBody.position.set(-(binEdge + funnelWidth / 2), funnelBottom + funnelHeight / 2, 0);
+        leftFunnelBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -angle);
+        this.physicsWorld.addBody(leftFunnelBody);
+
+        // Right funnel wall
+        const rightFunnelGeometry = new THREE.BoxGeometry(0.3, diagonalLength, depth);
+        const rightFunnelMesh = new THREE.Mesh(rightFunnelGeometry, material);
+        rightFunnelMesh.position.set(binEdge + funnelWidth / 2, funnelBottom + funnelHeight / 2, 0);
+        rightFunnelMesh.rotation.z = angle; // Rotate opposite direction
+        rightFunnelMesh.receiveShadow = true;
+        rightFunnelMesh.castShadow = true;
+        this.scene.add(rightFunnelMesh);
+
+        const rightFunnelShape = new CANNON.Box(new CANNON.Vec3(0.15, diagonalLength / 2, depth / 2));
+        const rightFunnelBody = new CANNON.Body({ mass: 0, shape: rightFunnelShape });
+        rightFunnelBody.position.set(binEdge + funnelWidth / 2, funnelBottom + funnelHeight / 2, 0);
+        rightFunnelBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), angle);
+        this.physicsWorld.addBody(rightFunnelBody);
     }
 
     getSpawnPosition() {
         return {
             x: (Math.random() - 0.5) * 2, // Spawn in center area with slight variation
             y: 15,
-            z: (Math.random() - 0.5) * 1
+            z: (Math.random() - 0.5) * 0.5 // Tighter Z range since walls are closer
         };
     }
 }
