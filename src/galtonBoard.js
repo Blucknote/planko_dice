@@ -2,10 +2,21 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
 export class GaltonBoard {
+    // Shared material for all pegs (for ContactMaterial)
+    static pegMaterial = null;
+
     constructor(physicsWorld, scene) {
         this.physicsWorld = physicsWorld;
         this.scene = scene;
         this.pegs = [];
+
+        // Create shared peg material if not exists
+        if (!GaltonBoard.pegMaterial) {
+            GaltonBoard.pegMaterial = physicsWorld.createMaterial({
+                friction: 0.1,
+                restitution: 0.8
+            });
+        }
 
         this.createBoard();
     }
@@ -143,10 +154,10 @@ export class GaltonBoard {
         });
 
         const rows = 12; // More rows for better distribution
-        const pegRadius = 0.2;
-        const horizontalSpacing = 0.9;
-        const verticalSpacing = 0.9;
-        const startY = 14;
+        const pegRadius = 0.25; // Slightly larger pegs for better collision
+        const horizontalSpacing = 1.0; // Spacing tuned for d20 size
+        const verticalSpacing = 1.0;
+        const startY = 13;
 
         // Classic Galton board: staggered rows
         for (let row = 0; row < rows; row++) {
@@ -182,10 +193,10 @@ export class GaltonBoard {
         const body = new CANNON.Body({
             mass: 0,
             shape: shape,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.1,
-                restitution: 0.8
-            })
+            material: GaltonBoard.pegMaterial, // Use shared material for ContactMaterial
+            collisionFilterGroup: 2, // Pegs are in group 2
+            collisionFilterMask: -1, // Collide with everything
+            type: CANNON.Body.STATIC
         });
         body.position.set(x, y, z);
         this.physicsWorld.addBody(body);

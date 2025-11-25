@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
 export class D20Dice {
+    // Shared material for all dice (for ContactMaterial)
+    static diceMaterial = null;
+
     constructor(physicsWorld, scene) {
         this.physicsWorld = physicsWorld;
         this.scene = scene;
@@ -9,6 +12,15 @@ export class D20Dice {
         this.body = null;
         this.settled = false;
         this.result = null;
+        this.resultRecorded = false; // Prevent duplicate recordings
+
+        // Create shared dice material if not exists
+        if (!D20Dice.diceMaterial) {
+            D20Dice.diceMaterial = physicsWorld.createMaterial({
+                friction: 0.5,
+                restitution: 0.5
+            });
+        }
 
         // D20 vertices (icosahedron)
         this.createDice();
@@ -40,21 +52,22 @@ export class D20Dice {
         this.body = new CANNON.Body({
             mass: 1,
             shape: shape,
-            linearDamping: 0.2,
-            angularDamping: 0.2,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.5,
-                restitution: 0.5
-            }),
+            linearDamping: 0.3,
+            angularDamping: 0.3,
+            material: D20Dice.diceMaterial, // Use shared material for ContactMaterial
             collisionFilterGroup: 1,
-            collisionFilterMask: -1
+            collisionFilterMask: -1,
+            allowSleep: true,
+            sleepSpeedLimit: 0.1,
+            sleepTimeLimit: 1
         });
 
         // Enable CCD to prevent tunneling
         this.body.ccdSpeedThreshold = 1;
         this.body.ccdIterations = 5;
 
-        this.physicsWorld.addBody(this.body);
+        // Don't add body to world yet - wait for spawn()
+        this.bodyAdded = false;
     }
 
     getColorForNumber(num) {
@@ -108,28 +121,48 @@ export class D20Dice {
     createNumberLabels() {
         this.numberSprites = [];
 
+        // Pre-create all textures from data URLs to avoid canvas reference issues
+        const textures = [];
         for (let i = 0; i < 20; i++) {
-            // Create SEPARATE canvas for EACH number to avoid texture override bug
             const canvas = document.createElement('canvas');
             canvas.width = 128;
             canvas.height = 128;
             const ctx = canvas.getContext('2d');
 
-            // Draw number
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 80px Arial';
+            // Clear with transparent background
+            ctx.clearRect(0, 0, 128, 128);
+
+            // Draw number with outline for visibility
+            const num = (i + 1).toString();
+            ctx.font = 'bold 72px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText((i + 1).toString(), 64, 64);
 
-            // Create texture immediately after drawing
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.needsUpdate = true; // Force update
+            // Black outline
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 6;
+            ctx.strokeText(num, 64, 64);
+
+            // White fill
+            ctx.fillStyle = 'white';
+            ctx.fillText(num, 64, 64);
+
+            // Convert to data URL immediately to capture the pixel data
+            const dataURL = canvas.toDataURL('image/png');
+            textures.push(dataURL);
+        }
+
+        // Now create sprites from the captured data URLs
+        for (let i = 0; i < 20; i++) {
+            const texture = new THREE.TextureLoader().load(textures[i]);
+            texture.colorSpace = THREE.SRGBColorSpace;
 
             const spriteMaterial = new THREE.SpriteMaterial({
                 map: texture,
                 transparent: true,
-                opacity: 1.0
+                opacity: 1.0,
+                depthTest: true,
+                depthWrite: false
             });
             const sprite = new THREE.Sprite(spriteMaterial);
             sprite.scale.set(0.35, 0.35, 1);
@@ -146,20 +179,29 @@ export class D20Dice {
     }
 
     spawn(x, y, z) {
+        // Set position first before adding to world
         this.body.position.set(x, y, z);
         this.body.velocity.set(
             (Math.random() - 0.5) * 2,
-            0,
-            (Math.random() - 0.5) * 2
+            -2, // Slight initial downward velocity
+            (Math.random() - 0.5) * 1
         );
         this.body.angularVelocity.set(
             (Math.random() - 0.5) * 10,
             (Math.random() - 0.5) * 10,
             (Math.random() - 0.5) * 10
         );
+
+        // Add body to physics world if not already added
+        if (!this.bodyAdded) {
+            this.physicsWorld.addBody(this.body);
+            this.bodyAdded = true;
+        }
+
         this.body.wakeUp();
         this.settled = false;
         this.result = null;
+        this.resultRecorded = false;
 
         this.scene.add(this.mesh);
     }
@@ -169,10 +211,17 @@ export class D20Dice {
         this.mesh.position.copy(this.body.position);
         this.mesh.quaternion.copy(this.body.quaternion);
 
-        // Check if dice has settled
-        if (!this.settled && this.body.sleepState === CANNON.Body.SLEEPING) {
-            this.settled = true;
-            this.result = this.getTopFaceNumber();
+        // Check if dice has settled (sleeping or very slow movement)
+        if (!this.settled) {
+            const velocity = this.body.velocity;
+            const angVelocity = this.body.angularVelocity;
+            const isSlowEnough = velocity.length() < 0.1 && angVelocity.length() < 0.1;
+            const isSleeping = this.body.sleepState === CANNON.Body.SLEEPING;
+
+            if (isSleeping || isSlowEnough) {
+                this.settled = true;
+                this.result = this.getTopFaceNumber();
+            }
         }
     }
 
@@ -196,7 +245,10 @@ export class D20Dice {
 
     remove() {
         this.scene.remove(this.mesh);
-        this.physicsWorld.removeBody(this.body);
+        if (this.bodyAdded) {
+            this.physicsWorld.removeBody(this.body);
+            this.bodyAdded = false;
+        }
     }
 
     isSettled() {
