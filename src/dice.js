@@ -46,14 +46,14 @@ export class D20Dice {
         // Add numbers as textures
         this.addNumbersToFaces();
 
-        // Use Sphere shape with proper radius matching visual - simpler and more reliable
-        const shape = new CANNON.Sphere(0.55); // Slightly larger than visual for better collision
+        // Use Sphere shape matching visual size for reliable sphere-sphere collision
+        const shape = new CANNON.Sphere(0.5); // Match visual icosahedron radius
 
         this.body = new CANNON.Body({
             mass: 1,
             shape: shape,
-            linearDamping: 0.3,
-            angularDamping: 0.3,
+            linearDamping: 0.1,    // Low damping for bouncy Planko feel
+            angularDamping: 0.2,   // Moderate angular damping
             material: D20Dice.diceMaterial, // Use shared material for ContactMaterial
             collisionFilterGroup: 1,
             collisionFilterMask: -1,
@@ -179,17 +179,22 @@ export class D20Dice {
     }
 
     spawn(x, y, z) {
-        // Set position first before adding to world
-        this.body.position.set(x, y, z);
+        // Set position - Z is always 0 for 2D Planko behavior
+        this.body.position.set(x, y, 0);
+
+        // Initial velocity - only X and Y, no Z movement
         this.body.velocity.set(
-            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2, // Random X push for variety
             -2, // Slight initial downward velocity
-            (Math.random() - 0.5) * 1
+            0   // No Z velocity - constrained to X-Y plane
         );
+
+        // Angular velocity - only Z-axis rotation for 2D Planko feel
+        // This makes the dice spin in the plane of the board
         this.body.angularVelocity.set(
-            (Math.random() - 0.5) * 10,
-            (Math.random() - 0.5) * 10,
-            (Math.random() - 0.5) * 10
+            0,  // No X rotation (would cause Z movement)
+            0,  // No Y rotation (would cause Z movement)
+            (Math.random() - 0.5) * 10  // Only Z-axis rotation (spin in plane)
         );
 
         // Add body to physics world if not already added
@@ -207,6 +212,10 @@ export class D20Dice {
     }
 
     update() {
+        // CRITICAL: Constrain dice to X-Y plane (2 axes only)
+        // This is the core of the Planko/Shenmue-style physics
+        this.constrainToXYPlane();
+
         // Sync mesh with physics body
         this.mesh.position.copy(this.body.position);
         this.mesh.quaternion.copy(this.body.quaternion);
@@ -223,6 +232,20 @@ export class D20Dice {
                 this.result = this.getTopFaceNumber();
             }
         }
+    }
+
+    constrainToXYPlane() {
+        // Lock Z position to 0 - dice only moves in X and Y
+        this.body.position.z = 0;
+
+        // Kill any Z velocity - dice cannot move toward/away from camera
+        this.body.velocity.z = 0;
+
+        // Constrain angular velocity to Z-axis only
+        // This prevents rotation that would cause the dice to "flip" in Z direction
+        this.body.angularVelocity.x = 0;
+        this.body.angularVelocity.y = 0;
+        // Keep Z angular velocity for natural spinning in the board plane
     }
 
     getTopFaceNumber() {

@@ -37,15 +37,16 @@ class GaltonBoardSimulator {
         this.activeDice = [];
 
         // Now create ContactMaterial between dice and pegs
+        // These settings are critical for Planko-style bouncing
         if (D20Dice.diceMaterial && GaltonBoard.pegMaterial) {
             const dicePegContact = new CANNON.ContactMaterial(
                 D20Dice.diceMaterial,
                 GaltonBoard.pegMaterial,
                 {
-                    friction: 0.3,
-                    restitution: 0.7, // Good bounce off pegs
-                    contactEquationStiffness: 1e8,
-                    contactEquationRelaxation: 3
+                    friction: 0.2,        // Low friction for smooth deflection
+                    restitution: 0.85,    // High bounce for Planko feel
+                    contactEquationStiffness: 1e9,  // Very stiff for instant response
+                    contactEquationRelaxation: 4    // Quick settling
                 }
             );
             this.physics.world.addContactMaterial(dicePegContact);
