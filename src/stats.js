@@ -1,20 +1,34 @@
+import { getColorForNumber, getColorForDeviation } from './utils.js';
+
 export class Statistics {
     constructor() {
         this.rolls = {};
         this.totalRolls = 0;
         this.lastRoll = null;
 
-        // Initialize all d20 numbers
         for (let i = 1; i <= 20; i++) {
             this.rolls[i] = 0;
         }
 
-        this.distributionElement = document.getElementById('distribution');
-        this.chartCanvas = document.getElementById('chart');
-        this.chartCtx = this.chartCanvas.getContext('2d');
-        this.currentNumberElement = document.getElementById('number-value');
+        this.distributionElement = this.getElement('distribution');
+        this.chartCanvas = this.getElement('chart');
+        this.chartCtx = this.chartCanvas ? this.chartCanvas.getContext('2d') : null;
+        this.currentNumberElement = this.getElement('number-value');
 
-        this.updateDisplay();
+        this.statRows = new Map();
+
+        if (this.distributionElement) {
+            this.createStatRows();
+            this.updateDisplay();
+        }
+    }
+
+    getElement(id) {
+        const element = document.getElementById(id);
+        if (!element) {
+            console.error(`Element with id "${id}" not found`);
+        }
+        return element;
     }
 
     addRoll(number) {
@@ -28,22 +42,39 @@ export class Statistics {
     }
 
     updateCurrentNumber(number) {
+        if (!this.currentNumberElement) return;
+
         this.currentNumberElement.textContent = number;
 
-        // Add animation effect
         this.currentNumberElement.style.transform = 'scale(1.2)';
-        this.currentNumberElement.style.color = this.getColorForNumber(number);
+        this.currentNumberElement.style.color = getColorForNumber(number);
 
         setTimeout(() => {
             this.currentNumberElement.style.transform = 'scale(1)';
         }, 200);
     }
 
-    getColorForNumber(num) {
-        // Color based on value: low = blue, mid = yellow, high = red
-        if (num <= 7) return '#6366f1'; // Low (blue)
-        if (num <= 14) return '#ffd700'; // Mid (gold)
-        return '#ef4444'; // High (red)
+    createStatRows() {
+        for (let i = 1; i <= 20; i++) {
+            const row = document.createElement('div');
+            row.className = 'stat-row';
+            row.innerHTML = `
+                <span class="stat-number">${i}</span>
+                <div class="stat-bar-container">
+                    <div class="stat-bar" style="width: 0%">
+                        <span class="stat-count">0</span>
+                    </div>
+                </div>
+                <span class="stat-percentage">0%</span>
+            `;
+            this.distributionElement.appendChild(row);
+            this.statRows.set(i, {
+                row,
+                bar: row.querySelector('.stat-bar'),
+                count: row.querySelector('.stat-count'),
+                percentage: row.querySelector('.stat-percentage')
+            });
+        }
     }
 
     reset() {
@@ -55,35 +86,26 @@ export class Statistics {
     }
 
     updateDisplay() {
-        // Update distribution bars
-        this.distributionElement.innerHTML = '';
-
-        const maxCount = Math.max(...Object.values(this.rolls), 1);
+        const rollValues = Object.values(this.rolls);
+        const maxCount = rollValues.length > 0 ? Math.max(...rollValues) : 1;
 
         for (let i = 1; i <= 20; i++) {
             const count = this.rolls[i];
             const percentage = this.totalRolls > 0
                 ? ((count / this.totalRolls) * 100).toFixed(1)
-                : 0;
-            const barWidth = this.totalRolls > 0
+                : '0';
+            const barWidth = maxCount > 0
                 ? (count / maxCount) * 100
                 : 0;
 
-            const row = document.createElement('div');
-            row.className = 'stat-row';
-            row.innerHTML = `
-                <span class="stat-number">${i}</span>
-                <div class="stat-bar-container">
-                    <div class="stat-bar" style="width: ${barWidth}%">
-                        <span class="stat-count">${count}</span>
-                    </div>
-                </div>
-                <span class="stat-percentage">${percentage}%</span>
-            `;
-            this.distributionElement.appendChild(row);
+            const row = this.statRows.get(i);
+            if (row) {
+                row.bar.style.width = `${barWidth}%`;
+                row.count.textContent = count;
+                row.percentage.textContent = `${percentage}%`;
+            }
         }
 
-        // Update chart
         this.updateChart();
     }
 
@@ -132,16 +154,13 @@ export class Statistics {
             const x = padding + (i - 1) * barWidth;
             const y = height - padding - barHeight;
 
-            // Bar color based on deviation from expected
             const expected = this.totalRolls / 20;
-            const deviation = Math.abs(count - expected) / expected;
-            const hue = Math.max(0, 240 - deviation * 240); // Blue to red
+            const deviation = expected > 0 ? Math.abs(count - expected) / expected : 0;
 
-            ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+            ctx.fillStyle = getColorForDeviation(deviation);
             ctx.fillRect(x + 2, y, barWidth - 4, barHeight);
 
-            // Number labels
-            if (i % 2 === 1) { // Show every other number to avoid crowding
+            if (i % 2 === 1) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
                 ctx.font = '10px Arial';
                 ctx.textAlign = 'center';

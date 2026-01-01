@@ -1,9 +1,10 @@
 import * as CANNON from 'cannon-es';
+import { CONFIG } from './config.js';
 
 export class PhysicsWorld {
     constructor() {
         this.world = new CANNON.World({
-            gravity: new CANNON.Vec3(0, -25, 0) // Moderate gravity
+            gravity: new CANNON.Vec3(0, CONFIG.physics.gravity, 0)
         });
 
         // Improve physics accuracy
@@ -12,33 +13,41 @@ export class PhysicsWorld {
         this.world.defaultContactMaterial.contactEquationStiffness = 1e8;
         this.world.defaultContactMaterial.contactEquationRelaxation = 3;
 
-        // Broadphase for better performance - NaiveBroadphase is more reliable for small scenes
-        this.world.broadphase = new CANNON.NaiveBroadphase();
-        this.world.broadphase.useBoundingBoxes = true;
+        // Use NaiveBroadphase for more reliable collision detection (slower but more accurate)
+        this.world.broadphase = new CANNON.NaiveBroadphase(this.world);
 
         // Solver settings for better collision response
-        this.world.solver.iterations = 50; // High for accurate collision response
-        this.world.solver.tolerance = 0.0001;
+        this.world.solver.iterations = CONFIG.physics.iterations;
+        this.world.solver.tolerance = CONFIG.physics.tolerance;
         this.world.allowSleep = true;
 
         this.bodies = [];
-        this.materials = {};
+        this.materialCache = new Map();
+        this.materialKeys = new Map();
     }
 
-    // Store and retrieve materials by name for ContactMaterial creation
     registerMaterial(name, material) {
-        this.materials[name] = material;
+        this.materialKeys.set(material, name);
     }
 
-    getMaterial(name) {
-        return this.materials[name];
+    getMaterialName(material) {
+        return this.materialKeys.get(material);
     }
 
     createMaterial(options = {}) {
-        return new CANNON.Material({
+        const key = `${options.friction || 0.3}-${options.restitution || 0.5}`;
+        
+        if (this.materialCache.has(key)) {
+            return this.materialCache.get(key);
+        }
+
+        const material = new CANNON.Material({
             friction: options.friction || 0.3,
             restitution: options.restitution || 0.5
         });
+        
+        this.materialCache.set(key, material);
+        return material;
     }
 
     createContactMaterial(material1, material2, options = {}) {
@@ -66,9 +75,6 @@ export class PhysicsWorld {
     }
 
     step(deltaTime) {
-        // Fixed timestep with max substeps to prevent tunneling
-        const fixedTimeStep = 1 / 120; // Smaller timestep for better accuracy
-        const maxSubSteps = 10;
-        this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
+        this.world.step(CONFIG.physics.fixedTimeStep, deltaTime, CONFIG.physics.maxSubSteps);
     }
 }

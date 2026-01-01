@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { CONFIG } from './config.js';
 
 export class GaltonBoard {
     // Shared material for all pegs (for ContactMaterial)
@@ -12,13 +13,17 @@ export class GaltonBoard {
 
         // Create shared peg material if not exists
         if (!GaltonBoard.pegMaterial) {
-            GaltonBoard.pegMaterial = physicsWorld.createMaterial({
-                friction: 0.1,
-                restitution: 0.8
-            });
+            GaltonBoard.pegMaterial = physicsWorld.createMaterial(CONFIG.galtonBoard.material);
         }
 
         this.createBoard();
+    }
+
+    createWallMaterial() {
+        return this.physicsWorld.createMaterial({
+            friction: 0.3,
+            restitution: 0.5
+        });
     }
 
     createBoard() {
@@ -36,11 +41,10 @@ export class GaltonBoard {
     }
 
     createFloor() {
-        // Floor depth matches containment (3 units total)
         const floorDepth = 3;
         const floorGeometry = new THREE.BoxGeometry(18, 0.5, floorDepth);
         const floorMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2a2a3e,
+            color: CONFIG.colors.floor,
             roughness: 0.8,
             metalness: 0.2
         });
@@ -50,13 +54,16 @@ export class GaltonBoard {
         this.scene.add(floorMesh);
 
         const floorShape = new CANNON.Box(new CANNON.Vec3(9, 0.25, floorDepth / 2));
+        this.floorMaterial = this.physicsWorld.createMaterial({
+            friction: 0.8,
+            restitution: 0.1
+        });
         const floorBody = new CANNON.Body({
             mass: 0,
             shape: floorShape,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.4,
-                restitution: 0.3
-            })
+            material: this.floorMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1
         });
         floorBody.position.set(0, -0.25, 0);
         this.physicsWorld.addBody(floorBody);
@@ -64,17 +71,16 @@ export class GaltonBoard {
 
     createWalls() {
         const wallMaterial = new THREE.MeshStandardMaterial({
-            color: 0x3a3a4e,
+            color: CONFIG.colors.wall,
             roughness: 0.7,
             metalness: 0.3,
             transparent: true,
             opacity: 0.6
         });
 
-        // Narrower depth to keep dice near pegs (dice radius ~0.55)
-        const wallZPosition = 1.5; // Closer walls for better containment
+        const wallZPosition = CONFIG.galtonBoard.wallZPosition;
+        const wallPhysicsMaterial = this.createWallMaterial();
 
-        // Back wall
         const backWallGeometry = new THREE.BoxGeometry(18, 20, 0.5);
         const backWallMesh = new THREE.Mesh(backWallGeometry, wallMaterial);
         backWallMesh.position.set(0, 10, -wallZPosition);
@@ -85,15 +91,13 @@ export class GaltonBoard {
         const backWallBody = new CANNON.Body({
             mass: 0,
             shape: backWallShape,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.3,
-                restitution: 0.5
-            })
+            material: wallPhysicsMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1
         });
         backWallBody.position.set(0, 10, -wallZPosition);
         this.physicsWorld.addBody(backWallBody);
 
-        // Front wall (transparent)
         const frontWallMesh = new THREE.Mesh(backWallGeometry, wallMaterial);
         frontWallMesh.position.set(0, 10, wallZPosition);
         frontWallMesh.receiveShadow = true;
@@ -103,18 +107,15 @@ export class GaltonBoard {
         const frontWallBody = new CANNON.Body({
             mass: 0,
             shape: frontWallShape,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.3,
-                restitution: 0.5
-            })
+            material: wallPhysicsMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1
         });
         frontWallBody.position.set(0, 10, wallZPosition);
         this.physicsWorld.addBody(frontWallBody);
 
-        // Side wall depth matches new containment (wallZPosition * 2 + wall thickness)
         const sideWallDepth = wallZPosition * 2;
 
-        // Left wall
         const sideWallGeometry = new THREE.BoxGeometry(0.5, 20, sideWallDepth);
         const leftWallMesh = new THREE.Mesh(sideWallGeometry, wallMaterial);
         leftWallMesh.position.set(-9, 10, 0);
@@ -125,15 +126,13 @@ export class GaltonBoard {
         const leftWallBody = new CANNON.Body({
             mass: 0,
             shape: leftWallShape,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.3,
-                restitution: 0.5
-            })
+            material: wallPhysicsMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1
         });
         leftWallBody.position.set(-9, 10, 0);
         this.physicsWorld.addBody(leftWallBody);
 
-        // Right wall
         const rightWallMesh = new THREE.Mesh(sideWallGeometry, wallMaterial);
         rightWallMesh.position.set(9, 10, 0);
         rightWallMesh.receiveShadow = true;
@@ -143,10 +142,9 @@ export class GaltonBoard {
         const rightWallBody = new CANNON.Body({
             mass: 0,
             shape: rightWallShape,
-            material: this.physicsWorld.createMaterial({
-                friction: 0.3,
-                restitution: 0.5
-            })
+            material: wallPhysicsMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1
         });
         rightWallBody.position.set(9, 10, 0);
         this.physicsWorld.addBody(rightWallBody);
@@ -154,38 +152,69 @@ export class GaltonBoard {
 
     createPegs() {
         const pegMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffd700,
+            color: CONFIG.colors.peg,
             roughness: 0.3,
             metalness: 0.7,
             emissive: 0x332200,
             emissiveIntensity: 0.1
         });
 
-        const rows = 12; // More rows for better distribution
-        const pegRadius = 0.3; // Larger pegs for reliable collision with dice (radius 0.55)
-        const horizontalSpacing = 1.2; // Wider spacing - dice needs room to fall between pegs
-        const verticalSpacing = 1.1; // Vertical spacing for natural bouncing
-        const startY = 13;
+        const rows = CONFIG.galtonBoard.rows;
+        const pegRadius = CONFIG.galtonBoard.pegRadius;
+        const horizontalSpacing = CONFIG.galtonBoard.horizontalSpacing;
+        const verticalSpacing = CONFIG.galtonBoard.verticalSpacing;
+        const pegsInRow = CONFIG.galtonBoard.pegsInRow;
+        const startY = CONFIG.galtonBoard.startY;
 
-        // Classic Galton board: staggered rows (Planko/Plinko pattern)
+        // Calculate pocket (bin) area to avoid creating pegs there
+        const binCount = CONFIG.galtonBoard.binCount;
+        const binWidth = CONFIG.galtonBoard.binWidth;
+        const totalBinWidth = binCount * binWidth;
+        const pocketBottomY = -0.25;
+        const pocketTopY = CONFIG.galtonBoard.binHeight - 0.25;
+
+        // Wall boundaries - dice needs space to pass
+        const wallPosition = 9;
+        const diceRadius = CONFIG.dice.radius;
+        const gapFromWalls = 0.8;
+        const pegSafeZoneLeft = -wallPosition + diceRadius + gapFromWalls;
+        const pegSafeZoneRight = wallPosition - diceRadius - gapFromWalls;
+
+        let pegCount = 0;
+        let skippedPegs = 0;
+
         for (let row = 0; row < rows; row++) {
             const y = startY - row * verticalSpacing;
 
-            // Staggered pattern: odd rows are offset by half spacing
-            // This creates the classic Planko left-right branching
+            // Skip if peg would be in pocket area vertically
+            if (y <= pocketTopY) {
+                console.log(`Skipping row ${row} at y=${y.toFixed(1)} - would be in pocket area (pocket top: ${pocketTopY.toFixed(1)})`);
+                continue;
+            }
+
             const isOddRow = row % 2 === 1;
-            const pegsInRow = 8; // Fixed number of pegs per row
             const offset = isOddRow ? horizontalSpacing / 2 : 0;
             const totalWidth = (pegsInRow - 1) * horizontalSpacing;
             const startX = -totalWidth / 2 + offset;
 
             for (let col = 0; col < pegsInRow; col++) {
                 const x = startX + col * horizontalSpacing;
-                const z = 0; // All pegs at Z=0 for 2D Planko
+                const z = 0;
+
+                // Check if peg is too close to walls (dice needs space to pass)
+                if (x < pegSafeZoneLeft || x > pegSafeZoneRight) {
+                    skippedPegs++;
+                    continue;
+                }
 
                 this.createPeg(x, y, z, pegRadius, pegMaterial);
+                pegCount++;
             }
         }
+
+        console.log(`Created ${pegCount} pegs total (skipped ${skippedPegs} pegs too close to walls)`);
+        console.log(`Peg safe zone: x from ${pegSafeZoneLeft.toFixed(1)} to ${pegSafeZoneRight.toFixed(1)}, y from ${(startY - (rows - 1) * verticalSpacing).toFixed(1)} to ${startY}`);
+        console.log(`Pocket area: y from ${pocketBottomY.toFixed(1)} to ${pocketTopY.toFixed(1)}`);
     }
 
     createPeg(x, y, z, radius, material) {
@@ -204,9 +233,9 @@ export class GaltonBoard {
         const body = new CANNON.Body({
             mass: 0,
             shape: shape,
-            material: GaltonBoard.pegMaterial, // Use shared material for ContactMaterial
-            collisionFilterGroup: 2, // Pegs are in group 2
-            collisionFilterMask: -1, // Collide with everything
+            material: GaltonBoard.pegMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: -1,
             type: CANNON.Body.STATIC
         });
         body.position.set(x, y, z);
@@ -217,17 +246,17 @@ export class GaltonBoard {
 
     createBins() {
         const binMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4a4a6e,
+            color: CONFIG.colors.bin,
             roughness: 0.6,
             metalness: 0.4,
             transparent: true,
             opacity: 0.7
         });
 
-        const numBins = 11;
-        const binWidth = 1.0;
-        const binHeight = 2;
-        const binDepth = 3;
+        const numBins = CONFIG.galtonBoard.binCount;
+        const binWidth = CONFIG.galtonBoard.binWidth;
+        const binHeight = CONFIG.galtonBoard.binHeight;
+        const binDepth = CONFIG.galtonBoard.binDepth;
         const totalWidth = numBins * binWidth;
         const startX = -totalWidth / 2;
 
@@ -238,14 +267,14 @@ export class GaltonBoard {
             if (i < numBins) {
                 const dividerGeometry = new THREE.BoxGeometry(0.1, binHeight, binDepth);
                 const dividerMesh = new THREE.Mesh(dividerGeometry, binMaterial);
-                dividerMesh.position.set(x - binWidth / 2, binHeight / 2, 0);
+                dividerMesh.position.set(x - binWidth / 2, binHeight / 2 - 0.25, 0);
                 dividerMesh.receiveShadow = true;
                 dividerMesh.castShadow = true;
                 this.scene.add(dividerMesh);
 
                 const dividerShape = new CANNON.Box(new CANNON.Vec3(0.05, binHeight / 2, binDepth / 2));
-                const dividerBody = new CANNON.Body({ mass: 0, shape: dividerShape });
-                dividerBody.position.set(x - binWidth / 2, binHeight / 2, 0);
+                const dividerBody = new CANNON.Body({ mass: 0, shape: dividerShape, collisionFilterGroup: 1, collisionFilterMask: -1 });
+                dividerBody.position.set(x - binWidth / 2, binHeight / 2 - 0.25, 0);
                 this.physicsWorld.addBody(dividerBody);
             }
         }
@@ -253,39 +282,41 @@ export class GaltonBoard {
         // Right edge
         const dividerGeometry = new THREE.BoxGeometry(0.1, binHeight, binDepth);
         const dividerMesh = new THREE.Mesh(dividerGeometry, binMaterial);
-        dividerMesh.position.set(startX + numBins * binWidth, binHeight / 2, 0);
+        dividerMesh.position.set(startX + numBins * binWidth, binHeight / 2 - 0.25, 0);
         dividerMesh.receiveShadow = true;
         dividerMesh.castShadow = true;
         this.scene.add(dividerMesh);
 
         const dividerShape = new CANNON.Box(new CANNON.Vec3(0.05, binHeight / 2, binDepth / 2));
-        const dividerBody = new CANNON.Body({ mass: 0, shape: dividerShape });
-        dividerBody.position.set(startX + numBins * binWidth, binHeight / 2, 0);
+        const dividerBody = new CANNON.Body({ mass: 0, shape: dividerShape, collisionFilterGroup: 1, collisionFilterMask: -1 });
+        dividerBody.position.set(startX + numBins * binWidth, binHeight / 2 - 0.25, 0);
         this.physicsWorld.addBody(dividerBody);
 
-        // Add funnel walls to guide dice from outer walls into bin area
-        this.createFunnelWalls(binMaterial, binDepth);
+        // Funnel walls removed - dice fall directly into bins
+        // this.createFunnelWalls(binMaterial, binDepth);
     }
 
     createFunnelWalls(material, depth) {
-        // Funnel walls guide dice from walls (at x=±9) into bins (at x=±5.5)
-        // Positioned below the pegs (which end around y=2) down to the bins
-        const wallEdge = 9; // Wall position
-        const binEdge = 5.5; // Bin edge position
-        const funnelTop = 2; // Just below pegs (last row at y=2)
-        const funnelBottom = 0; // Floor level
-        const funnelHeight = funnelTop - funnelBottom;
-        const funnelWidth = wallEdge - binEdge; // 3.5 units
+        const numBins = CONFIG.galtonBoard.binCount;
+        const binWidth = CONFIG.galtonBoard.binWidth;
+        const totalBinWidth = numBins * binWidth;
 
-        // Calculate diagonal length and angle
+        // Funnel walls guide dice from walls (at x=±9) into bins
+        const wallEdge = 9;
+        const binEdge = totalBinWidth / 2;
+        const funnelTop = 2;
+        const funnelBottom = 0;
+        const funnelHeight = funnelTop - funnelBottom;
+        const funnelWidth = wallEdge - binEdge;
+
         const diagonalLength = Math.sqrt(funnelHeight * funnelHeight + funnelWidth * funnelWidth);
-        const angle = Math.atan2(funnelWidth, funnelHeight); // Angle from vertical
+        const angle = Math.atan2(funnelWidth, funnelHeight);
 
         // Left funnel wall
         const leftFunnelGeometry = new THREE.BoxGeometry(0.3, diagonalLength, depth);
         const leftFunnelMesh = new THREE.Mesh(leftFunnelGeometry, material);
         leftFunnelMesh.position.set(-(binEdge + funnelWidth / 2), funnelBottom + funnelHeight / 2, 0);
-        leftFunnelMesh.rotation.z = -angle; // Rotate to create slope
+        leftFunnelMesh.rotation.z = -angle;
         leftFunnelMesh.receiveShadow = true;
         leftFunnelMesh.castShadow = true;
         this.scene.add(leftFunnelMesh);
@@ -300,7 +331,7 @@ export class GaltonBoard {
         const rightFunnelGeometry = new THREE.BoxGeometry(0.3, diagonalLength, depth);
         const rightFunnelMesh = new THREE.Mesh(rightFunnelGeometry, material);
         rightFunnelMesh.position.set(binEdge + funnelWidth / 2, funnelBottom + funnelHeight / 2, 0);
-        rightFunnelMesh.rotation.z = angle; // Rotate opposite direction
+        rightFunnelMesh.rotation.z = angle;
         rightFunnelMesh.receiveShadow = true;
         rightFunnelMesh.castShadow = true;
         this.scene.add(rightFunnelMesh);
@@ -313,10 +344,11 @@ export class GaltonBoard {
     }
 
     getSpawnPosition() {
+        const boardWidth = 16;
         return {
-            x: (Math.random() - 0.5) * 2, // Spawn in center area with slight variation
-            y: 15,
-            z: 0  // Always spawn at Z=0 for 2D Planko behavior
+            x: (Math.random() - 0.5) * boardWidth,
+            y: 22,
+            z: 0
         };
     }
 }

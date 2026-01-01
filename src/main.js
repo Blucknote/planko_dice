@@ -3,6 +3,7 @@ import { PhysicsWorld } from './physics.js';
 import { D20Dice } from './dice.js';
 import { GaltonBoard } from './galtonBoard.js';
 import { Statistics } from './stats.js';
+import { CONFIG } from './config.js';
 import * as CANNON from 'cannon-es';
 
 class GaltonBoardSimulator {
@@ -20,7 +21,7 @@ class GaltonBoardSimulator {
 
         // Dice management
         this.activeDice = [];
-        this.maxDice = 50; // Limit for performance
+        this.maxDice = CONFIG.dice.maxDice;
 
         // Setup controls
         this.setupControls();
@@ -34,23 +35,70 @@ class GaltonBoardSimulator {
         // Create a temporary dice to initialize the shared dice material
         const tempDice = new D20Dice(this.physics, this.scene);
         tempDice.remove();
-        this.activeDice = [];
 
-        // Now create ContactMaterial between dice and pegs
-        // These settings are critical for Planko-style bouncing
+        // ContactMaterial between dice and pegs - bouncy!
         if (D20Dice.diceMaterial && GaltonBoard.pegMaterial) {
             const dicePegContact = new CANNON.ContactMaterial(
                 D20Dice.diceMaterial,
                 GaltonBoard.pegMaterial,
                 {
-                    friction: 0.2,        // Low friction for smooth deflection
-                    restitution: 0.85,    // High bounce for Planko feel
-                    contactEquationStiffness: 1e9,  // Very stiff for instant response
-                    contactEquationRelaxation: 4    // Quick settling
+                    friction: 0.1,
+                    restitution: 0.98,
+                    contactEquationStiffness: 1e9,
+                    contactEquationRelaxation: 3
                 }
             );
             this.physics.world.addContactMaterial(dicePegContact);
-            console.log('ContactMaterial created between dice and pegs');
+            console.log('ContactMaterial created between dice and pegs (bouncy)');
+        }
+
+        // ContactMaterial between dice and dice - dice influence each other
+        if (D20Dice.diceMaterial) {
+            const diceDiceContact = new CANNON.ContactMaterial(
+                D20Dice.diceMaterial,
+                D20Dice.diceMaterial,
+                {
+                    friction: 0.2,
+                    restitution: 0.7,
+                    contactEquationStiffness: 1e9,
+                    contactEquationRelaxation: 3
+                }
+            );
+            this.physics.world.addContactMaterial(diceDiceContact);
+            console.log('ContactMaterial created between dice and dice');
+        }
+
+        // ContactMaterial for dice and bins/walls
+        const wallMaterial = this.galtonBoard.createWallMaterial();
+        if (D20Dice.diceMaterial && wallMaterial) {
+            const diceWallContact = new CANNON.ContactMaterial(
+                D20Dice.diceMaterial,
+                wallMaterial,
+                {
+                    friction: 0.3,
+                    restitution: 0.3,
+                    contactEquationStiffness: 1e8,
+                    contactEquationRelaxation: 3
+                }
+            );
+            this.physics.world.addContactMaterial(diceWallContact);
+            console.log('ContactMaterial created between dice and walls/bins');
+        }
+
+        // ContactMaterial for dice and floor
+        if (D20Dice.diceMaterial && this.galtonBoard.floorMaterial) {
+            const diceFloorContact = new CANNON.ContactMaterial(
+                D20Dice.diceMaterial,
+                this.galtonBoard.floorMaterial,
+                {
+                    friction: 0.8,
+                    restitution: 0.1,
+                    contactEquationStiffness: 1e8,
+                    contactEquationRelaxation: 3
+                }
+            );
+            this.physics.world.addContactMaterial(diceFloorContact);
+            console.log('ContactMaterial created between dice and floor');
         }
     }
 
@@ -61,6 +109,10 @@ class GaltonBoardSimulator {
 
         document.getElementById('add10Dice').addEventListener('click', () => {
             this.addDice(10);
+        });
+
+        document.getElementById('toggleCamera').addEventListener('click', () => {
+            this.scene.toggleCameraView();
         });
 
         document.getElementById('reset').addEventListener('click', () => {
@@ -76,6 +128,8 @@ class GaltonBoardSimulator {
             if (e.code === 'Space') {
                 e.preventDefault();
                 this.addDice(1);
+            } else if (e.code === 'KeyV') {
+                this.scene.toggleCameraView();
             } else if (e.code === 'KeyR') {
                 this.statistics.reset();
             } else if (e.code === 'KeyC') {
@@ -95,11 +149,10 @@ class GaltonBoardSimulator {
             const dice = new D20Dice(this.physics, this.scene);
             const spawnPos = this.galtonBoard.getSpawnPosition();
 
-            // Stagger spawning slightly if adding multiple
             setTimeout(() => {
                 dice.spawn(spawnPos.x, spawnPos.y, spawnPos.z);
                 this.activeDice.push(dice);
-            }, i * 100);
+            }, i * CONFIG.dice.spawnInterval);
         }
     }
 
@@ -115,28 +168,18 @@ class GaltonBoardSimulator {
         const deltaTime = (currentTime - this.clock) / 1000;
         this.clock = currentTime;
 
-        // Update physics
         this.physics.step(deltaTime);
 
-        // Update all dice
-        this.activeDice.forEach((dice, index) => {
+        this.activeDice.forEach(dice => {
             dice.update();
 
-            // Check if dice has settled and record result (only once per dice)
             if (dice.isSettled() && dice.getResult() !== null && !dice.resultRecorded) {
                 const result = dice.getResult();
                 this.statistics.addRoll(result);
-                dice.resultRecorded = true; // Mark as recorded to prevent duplicates
-
-                // Remove dice after recording (optional - comment out to keep dice on board)
-                // setTimeout(() => {
-                //     dice.remove();
-                //     this.activeDice.splice(index, 1);
-                // }, 2000);
+                dice.resultRecorded = true;
             }
         });
 
-        // Render scene
         this.scene.render();
     }
 }

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/planko_dice/',
+  base: './',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

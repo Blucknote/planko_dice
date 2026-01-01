@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { CONFIG } from './config.js';
 
 export class D20Dice {
     // Shared material for all dice (for ContactMaterial)
@@ -27,53 +28,40 @@ export class D20Dice {
     }
 
     createDice() {
-        // Create icosahedron geometry for d20
-        const geometry = new THREE.IcosahedronGeometry(0.5, 0);
+        const geometry = new THREE.IcosahedronGeometry(CONFIG.dice.radius, 0);
 
-        // Improved material
         const material = new THREE.MeshStandardMaterial({
-            color: 0x2255cc,
+            color: CONFIG.colors.dice,
             metalness: 0.2,
             roughness: 0.4,
             flatShading: true
         });
 
-        // Create mesh
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
 
-        // Add numbers as textures
         this.addNumbersToFaces();
 
-        // Use Sphere shape matching visual size for reliable sphere-sphere collision
-        const shape = new CANNON.Sphere(0.5); // Match visual icosahedron radius
+        const shape = new CANNON.Sphere(CONFIG.dice.radius);
 
         this.body = new CANNON.Body({
-            mass: 1,
+            mass: CONFIG.dice.mass,
             shape: shape,
-            linearDamping: 0.1,    // Low damping for bouncy Planko feel
-            angularDamping: 0.2,   // Moderate angular damping
-            material: D20Dice.diceMaterial, // Use shared material for ContactMaterial
+            linearDamping: CONFIG.dice.linearDamping,
+            angularDamping: CONFIG.dice.angularDamping,
+            material: D20Dice.diceMaterial,
             collisionFilterGroup: 1,
             collisionFilterMask: -1,
             allowSleep: true,
-            sleepSpeedLimit: 0.1,
-            sleepTimeLimit: 1
+            sleepSpeedLimit: 0.05,
+            sleepTimeLimit: 0.5
         });
 
-        // Enable CCD to prevent tunneling
-        this.body.ccdSpeedThreshold = 1;
+        this.body.ccdSpeedThreshold = 5;
         this.body.ccdIterations = 5;
 
-        // Don't add body to world yet - wait for spawn()
         this.bodyAdded = false;
-    }
-
-    getColorForNumber(num) {
-        // Color scheme: cool colors for low numbers, warm for high
-        const hue = ((num - 1) / 19) * 300; // 0 to 300 degrees
-        return new THREE.Color(`hsl(${hue}, 70%, 60%)`);
     }
 
     addNumbersToFaces() {
@@ -113,15 +101,13 @@ export class D20Dice {
             faceNormals.push({ center, normal });
         }
 
-        // Create number labels
         this.faceNormals = faceNormals;
-        this.createNumberLabels();
+        this.createNumberLabelsAsync();
     }
 
-    createNumberLabels() {
+    async createNumberLabelsAsync() {
         this.numberSprites = [];
 
-        // Pre-create all textures from data URLs to avoid canvas reference issues
         const textures = [];
         for (let i = 0; i < 20; i++) {
             const canvas = document.createElement('canvas');
@@ -129,32 +115,28 @@ export class D20Dice {
             canvas.height = 128;
             const ctx = canvas.getContext('2d');
 
-            // Clear with transparent background
             ctx.clearRect(0, 0, 128, 128);
 
-            // Draw number with outline for visibility
             const num = (i + 1).toString();
             ctx.font = 'bold 72px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
-            // Black outline
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 6;
             ctx.strokeText(num, 64, 64);
 
-            // White fill
             ctx.fillStyle = 'white';
             ctx.fillText(num, 64, 64);
 
-            // Convert to data URL immediately to capture the pixel data
             const dataURL = canvas.toDataURL('image/png');
             textures.push(dataURL);
         }
 
-        // Now create sprites from the captured data URLs
         for (let i = 0; i < 20; i++) {
-            const texture = new THREE.TextureLoader().load(textures[i]);
+            const texture = await new Promise((resolve) => {
+                new THREE.TextureLoader().load(textures[i], resolve);
+            });
             texture.colorSpace = THREE.SRGBColorSpace;
 
             const spriteMaterial = new THREE.SpriteMaterial({
@@ -167,7 +149,6 @@ export class D20Dice {
             const sprite = new THREE.Sprite(spriteMaterial);
             sprite.scale.set(0.35, 0.35, 1);
 
-            // Position sprite on face
             if (this.faceNormals[i]) {
                 const pos = this.faceNormals[i].center.clone().multiplyScalar(1.15);
                 sprite.position.copy(pos);
@@ -184,8 +165,8 @@ export class D20Dice {
 
         // Initial velocity - only X and Y, no Z movement
         this.body.velocity.set(
-            (Math.random() - 0.5) * 2, // Random X push for variety
-            -2, // Slight initial downward velocity
+            (Math.random() - 0.5) * 3, // Random X push for variety
+            -3, // Initial downward velocity
             0   // No Z velocity - constrained to X-Y plane
         );
 
@@ -212,15 +193,11 @@ export class D20Dice {
     }
 
     update() {
-        // CRITICAL: Constrain dice to X-Y plane (2 axes only)
-        // This is the core of the Planko/Shenmue-style physics
         this.constrainToXYPlane();
 
-        // Sync mesh with physics body
         this.mesh.position.copy(this.body.position);
         this.mesh.quaternion.copy(this.body.quaternion);
 
-        // Check if dice has settled (sleeping or very slow movement)
         if (!this.settled) {
             const velocity = this.body.velocity;
             const angVelocity = this.body.angularVelocity;
@@ -229,7 +206,7 @@ export class D20Dice {
 
             if (isSleeping || isSlowEnough) {
                 this.settled = true;
-                this.result = this.getTopFaceNumber();
+                this.result = this.calculateResult();
             }
         }
     }
@@ -248,8 +225,7 @@ export class D20Dice {
         // Keep Z angular velocity for natural spinning in the board plane
     }
 
-    getTopFaceNumber() {
-        // Find which face is pointing up
+    calculateResult() {
         let maxY = -Infinity;
         let topFaceIndex = 0;
 

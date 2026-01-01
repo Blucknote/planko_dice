@@ -1,45 +1,42 @@
 import * as THREE from 'three';
+import { CONFIG } from './config.js';
 
 export class Scene {
     constructor(canvas) {
         this.canvas = canvas;
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x1a1a2e);
+        this.scene.background = new THREE.Color(CONFIG.colors.background);
 
-        // Setup camera - side view (2D perspective of 3D physics)
         this.camera = new THREE.PerspectiveCamera(
-            50,
+            CONFIG.camera.fov,
             window.innerWidth / window.innerHeight,
-            0.1,
-            1000
+            CONFIG.camera.near,
+            CONFIG.camera.far
         );
-        this.camera.position.set(0, 5, 20);
-        this.camera.lookAt(0, 5, 0);
+        this.isIsometric = false;
+        this.setStandardView();
+        this.cameraButton = document.getElementById('toggleCamera');
+        this.updateCameraButtonText();
 
-        // Setup renderer
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: true,
+            antialias: CONFIG.rendering.antialias,
             alpha: false
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.rendering.maxPixelRatio));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        // Lighting
         this.setupLights();
 
-        // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize());
     }
 
     setupLights() {
-        // Ambient light
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(CONFIG.colors.ambientLight, 0.6);
         this.scene.add(ambientLight);
 
-        // Main directional light
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
         dirLight.position.set(5, 10, 7);
         dirLight.castShadow = true;
@@ -47,16 +44,14 @@ export class Scene {
         dirLight.shadow.camera.right = 15;
         dirLight.shadow.camera.top = 15;
         dirLight.shadow.camera.bottom = -5;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.mapSize.width = CONFIG.rendering.shadowMapSize;
+        dirLight.shadow.mapSize.height = CONFIG.rendering.shadowMapSize;
         this.scene.add(dirLight);
 
-        // Fill light from the other side
         const fillLight = new THREE.DirectionalLight(0x6688ff, 0.3);
         fillLight.position.set(-5, 8, -5);
         this.scene.add(fillLight);
 
-        // Rim light for depth
         const rimLight = new THREE.DirectionalLight(0xff88cc, 0.2);
         rimLight.position.set(0, 5, -10);
         this.scene.add(rimLight);
@@ -66,6 +61,33 @@ export class Scene {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    setStandardView() {
+        this.camera.position.set(CONFIG.camera.position.x, CONFIG.camera.position.y, CONFIG.camera.position.z);
+        this.camera.lookAt(CONFIG.camera.lookAt.x, CONFIG.camera.lookAt.y, CONFIG.camera.lookAt.z);
+        this.isIsometric = false;
+    }
+
+    setIsometricView() {
+        this.camera.position.set(CONFIG.camera.isometricPosition.x, CONFIG.camera.isometricPosition.y, CONFIG.camera.isometricPosition.z);
+        this.camera.lookAt(CONFIG.camera.lookAt.x, CONFIG.camera.lookAt.y, CONFIG.camera.lookAt.z);
+        this.isIsometric = true;
+    }
+
+    toggleCameraView() {
+        if (this.isIsometric) {
+            this.setStandardView();
+        } else {
+            this.setIsometricView();
+        }
+        this.updateCameraButtonText();
+    }
+
+    updateCameraButtonText() {
+        if (this.cameraButton) {
+            this.cameraButton.textContent = this.isIsometric ? 'Switch to Front View' : 'Switch to Isometric View';
+        }
     }
 
     render() {
