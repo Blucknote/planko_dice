@@ -77,37 +77,197 @@ body {
     transform: translateY(0);
 }
 
-#current-number {
+#dice-info {
     position: absolute;
     bottom: 40px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.85);
-    padding: 30px 60px;
+    padding: 25px 50px;
     border-radius: 20px;
     backdrop-filter: blur(15px);
     z-index: 10;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 0;
     border: 3px solid #ffd700;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
+#info-section {
+    flex: 1;
+    text-align: center;
+    padding: 0 10px;
+}
+
 #number-label {
-    font-size: 20px;
+    font-size: 14px;
     color: #ccc;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
 }
 
 #number-value {
-    font-size: 96px;
+    font-size: 64px;
     font-weight: bold;
     color: #ffd700;
     text-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
     line-height: 1;
     font-family: 'Arial Black', sans-serif;
     transition: transform 0.2s ease, color 0.3s ease;
+}
+
+#remaining-label {
+    font-size: 14px;
+    color: #ccc;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#remaining-value {
+    font-size: 48px;
+    font-weight: bold;
+    color: #4ade80;
+    text-shadow: 0 0 20px rgba(74, 222, 128, 0.8);
+    line-height: 1;
+    font-family: 'Arial Black', sans-serif;
+}
+
+#divider {
+    width: 2px;
+    height: 80px;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.3), transparent);
+}
+
+#physics-speed {
+    position: absolute;
+    bottom: 40px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 20px 25px;
+    border-radius: 20px;
+    backdrop-filter: blur(15px);
+    z-index: 10;
+    text-align: center;
+    border: 3px solid #f97316;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#physics-label {
+    font-size: 12px;
+    color: #ccc;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#physics-slider {
+    width: 150px;
+    -webkit-appearance: none;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+}
+
+#physics-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #f97316;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+#physics-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #f97316;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+#physics-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #f97316;
+    text-shadow: 0 0 15px rgba(249, 115, 22, 0.8);
+    line-height: 1;
+    font-family: 'Arial Black', sans-serif;
+}
+
+#results-section {
+    position: absolute;
+    top: 540px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 15px;
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+#results-label {
+    font-size: 14px;
+    color: #ccc;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#copy-results {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#copy-results:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+#copy-results:active {
+    transform: translateY(0);
+}
+
+#results-textarea {
+    width: 200px;
+    height: 120px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    resize: none;
+    outline: none;
+}
+
+#results-textarea:focus {
+    border-color: #667eea;
 }
 
 #stats-panel {

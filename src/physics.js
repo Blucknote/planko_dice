@@ -74,7 +74,9 @@ export class PhysicsWorld {
         }
     }
 
-    step(deltaTime) {
-        this.world.step(CONFIG.physics.fixedTimeStep, deltaTime, CONFIG.physics.maxSubSteps);
+    step(deltaTime, timeScale = 1.0) {
+        const scaledDeltaTime = deltaTime * timeScale;
+        const scaledSubSteps = Math.min(Math.ceil(timeScale * CONFIG.physics.maxSubSteps), 50);
+        this.world.step(CONFIG.physics.fixedTimeStep, scaledDeltaTime, scaledSubSteps);
     }
 }

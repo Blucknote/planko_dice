@@ -13,7 +13,8 @@ export const CONFIG = {
         mass: 1,
         linearDamping: 0.01,
         angularDamping: 0.01,
-        spawnInterval: 100,
+        spawnInterval: 300,
+        settledTTL: 800,
         material: {
             friction: 0.1,
             restitution: 0.95

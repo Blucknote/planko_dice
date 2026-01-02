@@ -22,6 +22,24 @@ class GaltonBoardSimulator {
         // Dice management
         this.activeDice = [];
         this.maxDice = CONFIG.dice.maxDice;
+        this.maxActiveDice = 5;
+
+        // Simulation state
+        this.remainingDiceToSpawn = 0;
+        this.simulationInterval = null;
+        this.physicsTimeScale = 1.0;
+
+        // UI elements
+        this.remainingValueElement = document.getElementById('remaining-value');
+        this.physicsSliderElement = document.getElementById('physics-slider');
+        this.physicsValueElement = document.getElementById('physics-value');
+
+        this.physicsSpeedSteps = [0.5, 1, 5, 20, 50, 100, 500];
+        this.currentSpeedIndex = 1;
+
+        this.resultsElement = document.getElementById('results-textarea');
+        this.copyResultsButton = document.getElementById('copy-results');
+        this.allResults = [];
 
         // Setup controls
         this.setupControls();
@@ -104,11 +122,15 @@ class GaltonBoardSimulator {
 
     setupControls() {
         document.getElementById('addDice').addEventListener('click', () => {
-            this.addDice(1);
+            this.addDice(1, true);
         });
 
-        document.getElementById('add10Dice').addEventListener('click', () => {
-            this.addDice(10);
+        document.getElementById('simulate100').addEventListener('click', () => {
+            this.simulate(100);
+        });
+
+        document.getElementById('simulate1000').addEventListener('click', () => {
+            this.simulate(1000);
         });
 
         document.getElementById('toggleCamera').addEventListener('click', () => {
@@ -117,10 +139,37 @@ class GaltonBoardSimulator {
 
         document.getElementById('reset').addEventListener('click', () => {
             this.statistics.reset();
+            this.remainingDiceToSpawn = 0;
+            this.allResults = [];
+            this.updateRemainingDisplay();
+            this.updateResultsDisplay();
+            if (this.simulationInterval) {
+                clearTimeout(this.simulationInterval);
+                this.simulationInterval = null;
+            }
         });
 
         document.getElementById('clearDice').addEventListener('click', () => {
             this.clearDice();
+        });
+
+        this.physicsSliderElement.addEventListener('input', (e) => {
+            const sliderValue = parseInt(e.target.value);
+            this.currentSpeedIndex = sliderValue;
+            const speed = this.physicsSpeedSteps[sliderValue];
+            this.physicsTimeScale = speed;
+            this.physicsValueElement.textContent = speed.toFixed(1) + 'x';
+        });
+
+        this.copyResultsButton.addEventListener('click', () => {
+            const text = this.allResults.join(', ');
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = this.copyResultsButton.textContent;
+                this.copyResultsButton.textContent = 'Copied!';
+                setTimeout(() => {
+                    this.copyResultsButton.textContent = originalText;
+                }, 1000);
+            });
         });
 
         // Keyboard shortcuts
@@ -138,12 +187,36 @@ class GaltonBoardSimulator {
         });
     }
 
-    addDice(count) {
+    getActiveDiceCount() {
+        if (this.physicsTimeScale >= 20) {
+            return this.activeDice.filter(dice => !dice.isSettled()).length;
+        }
+
+        return this.activeDice.filter(dice => {
+            if (dice.isSettled()) return false;
+
+            const diceY = dice.body.position.y;
+            const velocity = dice.body.velocity.length();
+            const pocketThreshold = 0.5;
+            const velocityThreshold = 0.5;
+
+            if (diceY < pocketThreshold && velocity < velocityThreshold) return false;
+
+            return true;
+        }).length;
+    }
+
+    addDice(count, bypassLimit = false) {
         for (let i = 0; i < count; i++) {
             // Remove oldest dice if we're at the limit
             if (this.activeDice.length >= this.maxDice) {
                 const oldDice = this.activeDice.shift();
                 oldDice.remove();
+            }
+
+            // Check if we should create this dice based on active limit
+            if (!bypassLimit && this.getActiveDiceCount() >= this.maxActiveDice) {
+                return false;
             }
 
             const dice = new D20Dice(this.physics, this.scene);
@@ -154,11 +227,69 @@ class GaltonBoardSimulator {
                 this.activeDice.push(dice);
             }, i * CONFIG.dice.spawnInterval);
         }
+        return true;
+    }
+
+    simulate(count) {
+        this.remainingDiceToSpawn += count;
+        this.updateRemainingDisplay();
+
+        if (this.simulationInterval) {
+            return;
+        }
+
+        const spawnNext = () => {
+            if (this.remainingDiceToSpawn <= 0) {
+                this.simulationInterval = null;
+                return;
+            }
+
+            const created = this.addDice(1);
+            if (created) {
+                this.remainingDiceToSpawn--;
+                this.updateRemainingDisplay();
+            }
+
+            this.simulationInterval = setTimeout(spawnNext, CONFIG.dice.spawnInterval * 2);
+        };
+
+        spawnNext();
+    }
+
+    updateRemainingDisplay() {
+        if (this.remainingValueElement) {
+            this.remainingValueElement.textContent = this.remainingDiceToSpawn;
+        }
+    }
+
+    updateResultsDisplay() {
+        if (this.resultsElement) {
+            this.resultsElement.value = this.allResults.join(', ');
+            this.resultsElement.scrollTop = this.resultsElement.scrollHeight;
+        }
+    }
+
+    setPhysicsSpeed(speed) {
+        const index = this.physicsSpeedSteps.indexOf(speed);
+        if (index !== -1) {
+            this.currentSpeedIndex = index;
+            this.physicsSliderElement.value = index;
+        }
+        this.physicsTimeScale = speed;
+        this.physicsValueElement.textContent = speed.toFixed(1) + 'x';
     }
 
     clearDice() {
         this.activeDice.forEach(dice => dice.remove());
         this.activeDice = [];
+        this.remainingDiceToSpawn = 0;
+        this.allResults = [];
+        this.updateRemainingDisplay();
+        this.updateResultsDisplay();
+        if (this.simulationInterval) {
+            clearTimeout(this.simulationInterval);
+            this.simulationInterval = null;
+        }
     }
 
     animate() {
@@ -168,7 +299,7 @@ class GaltonBoardSimulator {
         const deltaTime = (currentTime - this.clock) / 1000;
         this.clock = currentTime;
 
-        this.physics.step(deltaTime);
+        this.physics.step(deltaTime, this.physicsTimeScale);
 
         this.activeDice.forEach(dice => {
             dice.update();
@@ -176,9 +307,17 @@ class GaltonBoardSimulator {
             if (dice.isSettled() && dice.getResult() !== null && !dice.resultRecorded) {
                 const result = dice.getResult();
                 this.statistics.addRoll(result);
+                this.allResults.push(result);
+                this.updateResultsDisplay();
                 dice.resultRecorded = true;
             }
+
+            if (dice.shouldRemove()) {
+                dice.remove();
+            }
         });
+
+        this.activeDice = this.activeDice.filter(dice => !dice.shouldRemove());
 
         this.scene.render();
     }

@@ -15,15 +15,37 @@
 
         <div id="controls">
             <button id="addDice">Add Dice</button>
-            <button id="add10Dice">Add 10 Dice</button>
+            <button id="simulate100">Simulate 100</button>
+            <button id="simulate1000">Simulate 1000</button>
             <button id="toggleCamera">Toggle View</button>
             <button id="reset">Reset Stats</button>
             <button id="clearDice">Clear Dice</button>
         </div>
 
-        <div id="current-number">
-            <div id="number-label">Last Roll</div>
-            <div id="number-value">-</div>
+        <div id="results-section">
+            <div class="results-header">
+                <div id="results-label">All Results</div>
+                <button id="copy-results">Copy</button>
+            </div>
+            <textarea id="results-textarea" readonly></textarea>
+        </div>
+
+        <div id="dice-info">
+            <div id="info-section">
+                <div id="number-label">Last Roll</div>
+                <div id="number-value">-</div>
+            </div>
+            <div id="divider"></div>
+            <div id="info-section">
+                <div id="remaining-label">Remaining</div>
+                <div id="remaining-value">-</div>
+            </div>
+        </div>
+
+        <div id="physics-speed">
+            <div id="physics-label">Physics Speed</div>
+            <input type="range" id="physics-slider" min="0" max="6" step="1" value="1">
+            <div id="physics-value">1.0x</div>
         </div>
 
         <div id="stats-panel">

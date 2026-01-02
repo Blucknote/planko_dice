@@ -13,7 +13,8 @@ export class D20Dice {
         this.body = null;
         this.settled = false;
         this.result = null;
-        this.resultRecorded = false; // Prevent duplicate recordings
+        this.resultRecorded = false;
+        this.settledTime = null;
 
         // Create shared dice material if not exists
         if (!D20Dice.diceMaterial) {
@@ -62,6 +63,10 @@ export class D20Dice {
         this.body.ccdIterations = 5;
 
         this.bodyAdded = false;
+        this.ttlIndicator = null;
+        this.ttlCanvas = null;
+        this.ttlCtx = null;
+        this.createTTLIndicator();
     }
 
     addNumbersToFaces() {
@@ -103,6 +108,39 @@ export class D20Dice {
 
         this.faceNormals = faceNormals;
         this.createNumberLabelsAsync();
+
+        const vertices = [];
+        const faces = [];
+        for (let i = 0; i < positions.count; i += 3) {
+            vertices.push(new THREE.Vector3(
+                positions.getX(i),
+                positions.getY(i),
+                positions.getZ(i)
+            ));
+        }
+        this.vertices = vertices;
+        this.faces = faces;
+    }
+
+    createIcosahedronShape(radius) {
+        const phi = (1 + Math.sqrt(5)) / 2;
+        const verts = [];
+
+        const a = radius;
+        const b = radius / phi;
+
+        verts.push(new CANNON.Vec3(-b, 0, a), new CANNON.Vec3(b, 0, a), new CANNON.Vec3(-a, -b, 0), new CANNON.Vec3(a, -b, 0));
+        verts.push(new CANNON.Vec3(0, a, -b), new CANNON.Vec3(0, a, b), new CANNON.Vec3(-a, b, 0), new CANNON.Vec3(a, b, 0));
+        verts.push(new CANNON.Vec3(b, 0, -a), new CANNON.Vec3(-b, 0, -a), new CANNON.Vec3(0, -a, -b), new CANNON.Vec3(0, -a, b));
+
+        const faces = [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+        ];
+
+        return new CANNON.ConvexPolyhedron({ vertices: verts, faces });
     }
 
     async createNumberLabelsAsync() {
@@ -163,19 +201,27 @@ export class D20Dice {
         // Set position - Z is always 0 for 2D Planko behavior
         this.body.position.set(x, y, 0);
 
+        // Set random initial orientation - different faces can end up on top
+        const randomEuler = new THREE.Euler(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
+        );
+        this.mesh.quaternion.setFromEuler(randomEuler);
+        this.body.quaternion.copy(this.mesh.quaternion);
+
         // Initial velocity - only X and Y, no Z movement
         this.body.velocity.set(
-            (Math.random() - 0.5) * 3, // Random X push for variety
-            -3, // Initial downward velocity
-            0   // No Z velocity - constrained to X-Y plane
+            (Math.random() - 0.5) * 3,
+            -3,
+            0
         );
 
-        // Angular velocity - only Z-axis rotation for 2D Planko feel
-        // This makes the dice spin in the plane of the board
+        // Angular velocity - random rotation on all axes for random results
         this.body.angularVelocity.set(
-            0,  // No X rotation (would cause Z movement)
-            0,  // No Y rotation (would cause Z movement)
-            (Math.random() - 0.5) * 10  // Only Z-axis rotation (spin in plane)
+            (Math.random() - 0.5) * 10,
+            (Math.random() - 0.5) * 10,
+            (Math.random() - 0.5) * 10
         );
 
         // Add body to physics world if not already added
@@ -188,6 +234,7 @@ export class D20Dice {
         this.settled = false;
         this.result = null;
         this.resultRecorded = false;
+        this.settledTime = null;
 
         this.scene.add(this.mesh);
     }
@@ -207,8 +254,73 @@ export class D20Dice {
             if (isSleeping || isSlowEnough) {
                 this.settled = true;
                 this.result = this.calculateResult();
+                this.settledTime = performance.now();
             }
         }
+
+        this.updateTTLIndicator();
+    }
+
+    shouldRemove() {
+        if (!this.settled || !this.settledTime) return false;
+        const timeSinceSettled = performance.now() - this.settledTime;
+        return timeSinceSettled >= CONFIG.dice.settledTTL;
+    }
+
+    createTTLIndicator() {
+        const size = 64;
+        this.ttlCanvas = document.createElement('canvas');
+        this.ttlCanvas.width = size;
+        this.ttlCanvas.height = size;
+        this.ttlCtx = this.ttlCanvas.getContext('2d');
+
+        const texture = new THREE.CanvasTexture(this.ttlCanvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+
+        const material = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: true,
+            depthWrite: false
+        });
+
+        this.ttlIndicator = new THREE.Sprite(material);
+        this.ttlIndicator.scale.set(1.2, 1.2, 1);
+        this.ttlIndicator.visible = false;
+        this.mesh.add(this.ttlIndicator);
+        this.ttlIndicator.position.set(0, 0, 0.8);
+    }
+
+    updateTTLIndicator() {
+        if (!this.settled || !this.settledTime) {
+            this.ttlIndicator.visible = false;
+            return;
+        }
+
+        const timeSinceSettled = performance.now() - this.settledTime;
+        const remainingRatio = 1 - (timeSinceSettled / CONFIG.dice.settledTTL);
+
+        if (remainingRatio <= 0) {
+            this.ttlIndicator.visible = false;
+            return;
+        }
+
+        this.ttlIndicator.visible = true;
+        const size = 64;
+        const ctx = this.ttlCtx;
+        const centerX = size / 2;
+        const centerY = size / 2;
+        const radius = size / 2 - 2;
+
+        ctx.clearRect(0, 0, size, size);
+
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * remainingRatio));
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        this.ttlIndicator.material.map.needsUpdate = true;
     }
 
     constrainToXYPlane() {
@@ -218,11 +330,8 @@ export class D20Dice {
         // Kill any Z velocity - dice cannot move toward/away from camera
         this.body.velocity.z = 0;
 
-        // Constrain angular velocity to Z-axis only
-        // This prevents rotation that would cause the dice to "flip" in Z direction
-        this.body.angularVelocity.x = 0;
-        this.body.angularVelocity.y = 0;
-        // Keep Z angular velocity for natural spinning in the board plane
+        // Allow full rotation around all axes for random results
+        // Z position is constrained but rotation is free
     }
 
     calculateResult() {
