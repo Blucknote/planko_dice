@@ -23,6 +23,8 @@ class GaltonBoardSimulator {
         this.activeDice = [];
         this.maxDice = CONFIG.dice.maxDice;
         this.maxActiveDice = 5;
+        this.baseMaxActiveDice = 5;
+        this.baseSpawnInterval = CONFIG.dice.spawnInterval;
 
         // Simulation state
         this.remainingDiceToSpawn = 0;
@@ -206,6 +208,21 @@ class GaltonBoardSimulator {
         }).length;
     }
 
+    getMaxActiveDice() {
+        if (this.physicsTimeScale <= 1) {
+            return this.baseMaxActiveDice;
+        }
+        const scaleFactor = Math.min(this.physicsTimeScale / 50, 10);
+        return Math.ceil(this.baseMaxActiveDice * scaleFactor);
+    }
+
+    getScaledSpawnInterval() {
+        if (this.physicsTimeScale <= 1) {
+            return this.baseSpawnInterval;
+        }
+        return Math.max(this.baseSpawnInterval / Math.sqrt(this.physicsTimeScale), 50);
+    }
+
     addDice(count, bypassLimit = false) {
         for (let i = 0; i < count; i++) {
             // Remove oldest dice if we're at the limit
@@ -215,7 +232,7 @@ class GaltonBoardSimulator {
             }
 
             // Check if we should create this dice based on active limit
-            if (!bypassLimit && this.getActiveDiceCount() >= this.maxActiveDice) {
+            if (!bypassLimit && this.getActiveDiceCount() >= this.getMaxActiveDice()) {
                 return false;
             }
 
@@ -223,7 +240,7 @@ class GaltonBoardSimulator {
             const spawnPos = this.galtonBoard.getSpawnPosition();
 
             setTimeout(() => {
-                dice.spawn(spawnPos.x, spawnPos.y, spawnPos.z);
+                dice.spawn(spawnPos.x, spawnPos.y, spawnPos.z, this.physicsTimeScale);
                 this.activeDice.push(dice);
             }, i * CONFIG.dice.spawnInterval);
         }
@@ -250,7 +267,7 @@ class GaltonBoardSimulator {
                 this.updateRemainingDisplay();
             }
 
-            this.simulationInterval = setTimeout(spawnNext, CONFIG.dice.spawnInterval * 2);
+            this.simulationInterval = setTimeout(spawnNext, this.getScaledSpawnInterval() * 2);
         };
 
         spawnNext();

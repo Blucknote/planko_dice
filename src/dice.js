@@ -15,6 +15,13 @@ export class D20Dice {
         this.result = null;
         this.resultRecorded = false;
         this.settledTime = null;
+        this.physicsTimeScale = 1.0;
+        this.spawnTime = null;
+        this.binEntryTime = null;
+        this.baseStuckTTL = 3000;
+        this.baseMaxLifetime = 10000;
+        this.lifetimeStartTime = null;
+        this.lifetimeStartDelay = 1500;
 
         // Create shared dice material if not exists
         if (!D20Dice.diceMaterial) {
@@ -197,7 +204,12 @@ export class D20Dice {
         }
     }
 
-    spawn(x, y, z) {
+    spawn(x, y, z, timeScale = 1.0) {
+        this.physicsTimeScale = timeScale;
+        this.spawnTime = performance.now();
+        this.binEntryTime = null;
+        this.lifetimeStartTime = null;
+
         // Set position - Z is always 0 for 2D Planko behavior
         this.body.position.set(x, y, 0);
 
@@ -245,6 +257,26 @@ export class D20Dice {
         this.mesh.position.copy(this.body.position);
         this.mesh.quaternion.copy(this.body.quaternion);
 
+        // Start lifetime timer after delay
+        const currentTime = performance.now();
+        if (this.spawnTime && !this.lifetimeStartTime) {
+            const timeSinceSpawn = currentTime - this.spawnTime;
+            const scaledDelay = Math.max(this.lifetimeStartDelay / Math.max(this.physicsTimeScale, 1), 200);
+            if (timeSinceSpawn >= scaledDelay) {
+                this.lifetimeStartTime = currentTime;
+            }
+        }
+
+        // Track bin entry (stuck detection)
+        const binZoneY = 2;
+        const isInBin = this.body.position.y < binZoneY;
+
+        if (isInBin && !this.binEntryTime) {
+            this.binEntryTime = performance.now();
+        } else if (!isInBin && this.binEntryTime) {
+            this.binEntryTime = null;
+        }
+
         if (!this.settled) {
             const velocity = this.body.velocity;
             const angVelocity = this.body.angularVelocity;
@@ -262,9 +294,38 @@ export class D20Dice {
     }
 
     shouldRemove() {
-        if (!this.settled || !this.settledTime) return false;
-        const timeSinceSettled = performance.now() - this.settledTime;
-        return timeSinceSettled >= CONFIG.dice.settledTTL;
+        const currentTime = performance.now();
+        const timeScale = Math.max(this.physicsTimeScale, 1);
+
+        // Check max lifetime (10 seconds base, scales with physics speed)
+        // Only checks after lifetimeStartTime is set (1.5s delay)
+        if (this.lifetimeStartTime) {
+            const lifetime = currentTime - this.lifetimeStartTime;
+            const dynamicMaxLifetime = Math.max(this.baseMaxLifetime / timeScale, 2000);
+            if (lifetime >= dynamicMaxLifetime) {
+                return true;
+            }
+        }
+
+        // Check if stuck in bin for too long (3 seconds base, scales with physics speed)
+        if (this.binEntryTime) {
+            const timeInBin = currentTime - this.binEntryTime;
+            const dynamicStuckTTL = Math.max(this.baseStuckTTL / timeScale, 500);
+            if (timeInBin >= dynamicStuckTTL) {
+                return true;
+            }
+        }
+
+        // Check settled TTL (800ms base, scales with physics speed)
+        if (this.settled && this.settledTime) {
+            const timeSinceSettled = currentTime - this.settledTime;
+            const dynamicTTL = Math.max(CONFIG.dice.settledTTL / timeScale, 200);
+            if (timeSinceSettled >= dynamicTTL) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     createTTLIndicator() {
@@ -292,15 +353,53 @@ export class D20Dice {
     }
 
     updateTTLIndicator() {
-        if (!this.settled || !this.settledTime) {
-            this.ttlIndicator.visible = false;
-            return;
+        const currentTime = performance.now();
+        const timeScale = Math.max(this.physicsTimeScale, 1);
+        let shouldShowIndicator = false;
+        let remainingRatio = 1;
+        let indicatorColor = '#ff4444';
+
+        // Check max lifetime indicator (only after lifetimeStartTime is set)
+        if (this.lifetimeStartTime) {
+            const lifetime = currentTime - this.lifetimeStartTime;
+            const dynamicMaxLifetime = Math.max(this.baseMaxLifetime / timeScale, 2000);
+            const maxLifetimeRatio = 1 - (lifetime / dynamicMaxLifetime);
+            remainingRatio = Math.min(remainingRatio, maxLifetimeRatio);
+            if (maxLifetimeRatio < 1) {
+                shouldShowIndicator = true;
+                indicatorColor = '#ff4444';
+            }
         }
 
-        const timeSinceSettled = performance.now() - this.settledTime;
-        const remainingRatio = 1 - (timeSinceSettled / CONFIG.dice.settledTTL);
+        // Check stuck in bin indicator
+        if (this.binEntryTime) {
+            const timeInBin = currentTime - this.binEntryTime;
+            const dynamicStuckTTL = Math.max(this.baseStuckTTL / timeScale, 500);
+            const binRatio = 1 - (timeInBin / dynamicStuckTTL);
+            if (binRatio < remainingRatio) {
+                remainingRatio = binRatio;
+                indicatorColor = '#ffaa00';
+            }
+            if (binRatio < 1) {
+                shouldShowIndicator = true;
+            }
+        }
 
-        if (remainingRatio <= 0) {
+        // Check settled TTL indicator
+        if (this.settled && this.settledTime) {
+            const timeSinceSettled = currentTime - this.settledTime;
+            const dynamicTTL = Math.max(CONFIG.dice.settledTTL / timeScale, 200);
+            const settledRatio = 1 - (timeSinceSettled / dynamicTTL);
+            if (settledRatio < remainingRatio) {
+                remainingRatio = settledRatio;
+                indicatorColor = '#44ff44';
+            }
+            if (settledRatio < 1) {
+                shouldShowIndicator = true;
+            }
+        }
+
+        if (!shouldShowIndicator || remainingRatio <= 0) {
             this.ttlIndicator.visible = false;
             return;
         }
@@ -316,7 +415,7 @@ export class D20Dice {
 
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * remainingRatio));
-        ctx.strokeStyle = '#ff4444';
+        ctx.strokeStyle = indicatorColor;
         ctx.lineWidth = 4;
         ctx.stroke();
 
