@@ -18,10 +18,13 @@ export class D20Dice {
         this.physicsTimeScale = 1.0;
         this.spawnTime = null;
         this.binEntryTime = null;
-        this.baseStuckTTL = 3000;
-        this.baseMaxLifetime = 10000;
-        this.lifetimeStartTime = null;
-        this.lifetimeStartDelay = 1500;
+        this.baseStuckTTL = 5000;
+        this.baseMaxLifetime = 20000;
+        this.baseAboveBinActiveTTL = 8000;
+        this.aboveBinActiveTime = null;
+        this.sleepAboveBinTime = null;
+        this.baseSleepAboveBinTTL = 5000;
+        this.removed = false;
 
         // Create shared dice material if not exists
         if (!D20Dice.diceMaterial) {
@@ -51,7 +54,7 @@ export class D20Dice {
 
         this.addNumbersToFaces();
 
-        const shape = new CANNON.Sphere(CONFIG.dice.radius);
+        const shape = this.createIcosahedronShape(CONFIG.dice.radius);
 
         this.body = new CANNON.Body({
             mass: CONFIG.dice.mass,
@@ -130,16 +133,33 @@ export class D20Dice {
     }
 
     createIcosahedronShape(radius) {
-        const phi = (1 + Math.sqrt(5)) / 2;
+        const t = (1 + Math.sqrt(5)) / 2; // phi
+
+        // Same vertices as Three.js IcosahedronGeometry
+        const rawVerts = [
+            new CANNON.Vec3(-1, t, 0),
+            new CANNON.Vec3(1, t, 0),
+            new CANNON.Vec3(-1, -t, 0),
+            new CANNON.Vec3(1, -t, 0),
+            new CANNON.Vec3(0, -1, t),
+            new CANNON.Vec3(0, 1, t),
+            new CANNON.Vec3(0, -1, -t),
+            new CANNON.Vec3(0, 1, -t),
+            new CANNON.Vec3(t, 0, -1),
+            new CANNON.Vec3(t, 0, 1),
+            new CANNON.Vec3(-t, 0, -1),
+            new CANNON.Vec3(-t, 0, 1)
+        ];
+
+        // Normalize to radius
         const verts = [];
+        for (const v of rawVerts) {
+            const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+            const scale = radius / len;
+            verts.push(new CANNON.Vec3(v.x * scale, v.y * scale, v.z * scale));
+        }
 
-        const a = radius;
-        const b = radius / phi;
-
-        verts.push(new CANNON.Vec3(-b, 0, a), new CANNON.Vec3(b, 0, a), new CANNON.Vec3(-a, -b, 0), new CANNON.Vec3(a, -b, 0));
-        verts.push(new CANNON.Vec3(0, a, -b), new CANNON.Vec3(0, a, b), new CANNON.Vec3(-a, b, 0), new CANNON.Vec3(a, b, 0));
-        verts.push(new CANNON.Vec3(b, 0, -a), new CANNON.Vec3(-b, 0, -a), new CANNON.Vec3(0, -a, -b), new CANNON.Vec3(0, -a, b));
-
+        // Same faces as Three.js
         const faces = [
             [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
             [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
@@ -208,7 +228,10 @@ export class D20Dice {
         this.physicsTimeScale = timeScale;
         this.spawnTime = performance.now();
         this.binEntryTime = null;
-        this.lifetimeStartTime = null;
+        this.aboveBinActiveTime = null;
+        this.sleepAboveBinTime = null;
+
+        console.log(`[DICE] Spawned at ${new Date().toISOString()}, timeScale: ${timeScale}`);
 
         // Set position - Z is always 0 for 2D Planko behavior
         this.body.position.set(x, y, 0);
@@ -257,23 +280,56 @@ export class D20Dice {
         this.mesh.position.copy(this.body.position);
         this.mesh.quaternion.copy(this.body.quaternion);
 
-        // Start lifetime timer after delay
         const currentTime = performance.now();
-        if (this.spawnTime && !this.lifetimeStartTime) {
-            const timeSinceSpawn = currentTime - this.spawnTime;
-            const scaledDelay = Math.max(this.lifetimeStartDelay / Math.max(this.physicsTimeScale, 1), 200);
-            if (timeSinceSpawn >= scaledDelay) {
-                this.lifetimeStartTime = currentTime;
-            }
-        }
 
         // Track bin entry (stuck detection)
         const binZoneY = 2;
         const isInBin = this.body.position.y < binZoneY;
 
+        // Dynamic damping - increase when in bin to stop faster
+        if (isInBin) {
+            this.body.linearDamping = 0.3;
+            this.body.angularDamping = 0.5;
+        } else {
+            this.body.linearDamping = CONFIG.dice.linearDamping;
+            this.body.angularDamping = CONFIG.dice.angularDamping;
+        }
+        const isAboveBin = !isInBin;
+        const isSleeping = this.body.sleepState === CANNON.Body.SLEEPING;
+
+        // Log dice lifetime every 5 seconds for debugging
+        if (this.spawnTime) {
+            const lifetime = currentTime - this.spawnTime;
+            if (Math.floor(lifetime / 5000) > Math.floor((lifetime - 16) / 5000)) {
+                const shouldRm = this.shouldRemove();
+                console.log(`[DICE] Age: ${(lifetime/1000).toFixed(1)}s, Y: ${this.body.position.y.toFixed(2)}, sleeping: ${isSleeping}, settled: ${this.settled}, shouldRemove: ${shouldRm}`);
+            }
+        }
+
+        // Track when dice is above bin and sleeping
+        // Don't reset when not sleeping - dice may oscillate but should still timeout
+        if (isAboveBin && isSleeping && !this.sleepAboveBinTime) {
+            this.sleepAboveBinTime = currentTime;
+        } else if (!isAboveBin) {
+            // Only reset when entering bin zone, not when waking up
+            this.sleepAboveBinTime = null;
+        }
+
+        // Track when dice is above bin (regardless of settled state)
+        // This ensures dice stuck on pins will be removed
+        if (isAboveBin && !this.aboveBinActiveTime) {
+            this.aboveBinActiveTime = currentTime;
+        } else if (!isAboveBin) {
+            // Only reset when entering bin zone
+            this.aboveBinActiveTime = null;
+        }
+
+        // Track bin entry with hysteresis to handle oscillations
+        const binExitY = 2.5;  // Must go higher to "exit" bin
         if (isInBin && !this.binEntryTime) {
-            this.binEntryTime = performance.now();
-        } else if (!isInBin && this.binEntryTime) {
+            this.binEntryTime = currentTime;
+        } else if (this.body.position.y > binExitY && this.binEntryTime) {
+            // Only reset if dice clearly exits bin zone (hysteresis)
             this.binEntryTime = null;
         }
 
@@ -286,7 +342,7 @@ export class D20Dice {
             if (isSleeping || isSlowEnough) {
                 this.settled = true;
                 this.result = this.calculateResult();
-                this.settledTime = performance.now();
+                this.settledTime = currentTime;
             }
         }
 
@@ -294,15 +350,17 @@ export class D20Dice {
     }
 
     shouldRemove() {
+        // Already removed - always return true for consistent filtering
+        if (this.removed) return true;
+
         const currentTime = performance.now();
         const timeScale = Math.max(this.physicsTimeScale, 1);
 
-        // Check max lifetime (10 seconds base, scales with physics speed)
-        // Only checks after lifetimeStartTime is set (1.5s delay)
-        if (this.lifetimeStartTime) {
-            const lifetime = currentTime - this.lifetimeStartTime;
-            const dynamicMaxLifetime = Math.max(this.baseMaxLifetime / timeScale, 2000);
-            if (lifetime >= dynamicMaxLifetime) {
+        // Absolute max lifetime - 20 seconds regardless of physics speed
+        if (this.spawnTime) {
+            const lifetime = currentTime - this.spawnTime;
+            if (lifetime >= this.baseMaxLifetime) {
+                console.log(`[DICE] Removing by lifetime: ${lifetime.toFixed(0)}ms >= ${this.baseMaxLifetime}ms, position: ${this.body.position.y.toFixed(2)}, sleeping: ${this.body.sleepState === CANNON.Body.SLEEPING}`);
                 return true;
             }
         }
@@ -312,6 +370,24 @@ export class D20Dice {
             const timeInBin = currentTime - this.binEntryTime;
             const dynamicStuckTTL = Math.max(this.baseStuckTTL / timeScale, 500);
             if (timeInBin >= dynamicStuckTTL) {
+                return true;
+            }
+        }
+
+        // Check if sleeping above bin for too long (5 seconds, scales with physics speed)
+        if (this.sleepAboveBinTime) {
+            const timeSleepingAboveBin = currentTime - this.sleepAboveBinTime;
+            const dynamicSleepTTL = Math.max(this.baseSleepAboveBinTTL / timeScale, 1000);
+            if (timeSleepingAboveBin >= dynamicSleepTTL) {
+                return true;
+            }
+        }
+
+        // Check if active above bin for too long (5 seconds base, scales with physics speed)
+        if (this.aboveBinActiveTime) {
+            const timeAboveBin = currentTime - this.aboveBinActiveTime;
+            const dynamicAboveBinTTL = Math.max(this.baseAboveBinActiveTTL / timeScale, 1000);
+            if (timeAboveBin >= dynamicAboveBinTTL) {
                 return true;
             }
         }
@@ -359,11 +435,10 @@ export class D20Dice {
         let remainingRatio = 1;
         let indicatorColor = '#ff4444';
 
-        // Check max lifetime indicator (only after lifetimeStartTime is set)
-        if (this.lifetimeStartTime) {
-            const lifetime = currentTime - this.lifetimeStartTime;
-            const dynamicMaxLifetime = Math.max(this.baseMaxLifetime / timeScale, 2000);
-            const maxLifetimeRatio = 1 - (lifetime / dynamicMaxLifetime);
+        // Check max lifetime indicator (absolute from spawn)
+        if (this.spawnTime) {
+            const lifetime = currentTime - this.spawnTime;
+            const maxLifetimeRatio = 1 - (lifetime / this.baseMaxLifetime);
             remainingRatio = Math.min(remainingRatio, maxLifetimeRatio);
             if (maxLifetimeRatio < 1) {
                 shouldShowIndicator = true;
@@ -381,6 +456,34 @@ export class D20Dice {
                 indicatorColor = '#ffaa00';
             }
             if (binRatio < 1) {
+                shouldShowIndicator = true;
+            }
+        }
+
+        // Check sleeping above bin indicator
+        if (this.sleepAboveBinTime) {
+            const timeSleepingAboveBin = currentTime - this.sleepAboveBinTime;
+            const dynamicSleepTTL = Math.max(this.baseSleepAboveBinTTL / timeScale, 1000);
+            const sleepRatio = 1 - (timeSleepingAboveBin / dynamicSleepTTL);
+            if (sleepRatio < remainingRatio) {
+                remainingRatio = sleepRatio;
+                indicatorColor = '#ff00ff';
+            }
+            if (sleepRatio < 1) {
+                shouldShowIndicator = true;
+            }
+        }
+
+        // Check active above bin indicator
+        if (this.aboveBinActiveTime) {
+            const timeAboveBin = currentTime - this.aboveBinActiveTime;
+            const dynamicAboveBinTTL = Math.max(this.baseAboveBinActiveTTL / timeScale, 1000);
+            const aboveBinRatio = 1 - (timeAboveBin / dynamicAboveBinTTL);
+            if (aboveBinRatio < remainingRatio) {
+                remainingRatio = aboveBinRatio;
+                indicatorColor = '#aa44ff';
+            }
+            if (aboveBinRatio < 1) {
                 shouldShowIndicator = true;
             }
         }
@@ -451,6 +554,7 @@ export class D20Dice {
     }
 
     remove() {
+        this.removed = true;
         this.scene.remove(this.mesh);
         if (this.bodyAdded) {
             this.physicsWorld.removeBody(this.body);

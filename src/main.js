@@ -31,6 +31,10 @@ class GaltonBoardSimulator {
         this.simulationInterval = null;
         this.physicsTimeScale = 1.0;
 
+        // Zombie dice cleanup
+        this.lastZombieCheckTime = 0;
+        this.zombieCheckInterval = 100;
+
         // UI elements
         this.remainingValueElement = document.getElementById('remaining-value');
         this.physicsSliderElement = document.getElementById('physics-slider');
@@ -111,14 +115,14 @@ class GaltonBoardSimulator {
                 D20Dice.diceMaterial,
                 this.galtonBoard.floorMaterial,
                 {
-                    friction: 0.8,
+                    friction: 0.95,
                     restitution: 0.1,
                     contactEquationStiffness: 1e8,
                     contactEquationRelaxation: 3
                 }
             );
             this.physics.world.addContactMaterial(diceFloorContact);
-            console.log('ContactMaterial created between dice and floor');
+            console.log('ContactMaterial created between dice and floor (high friction)');
         }
     }
 
@@ -161,6 +165,10 @@ class GaltonBoardSimulator {
             const speed = this.physicsSpeedSteps[sliderValue];
             this.physicsTimeScale = speed;
             this.physicsValueElement.textContent = speed.toFixed(1) + 'x';
+
+            this.activeDice.forEach(dice => {
+                dice.physicsTimeScale = speed;
+            });
         });
 
         this.copyResultsButton.addEventListener('click', () => {
@@ -216,6 +224,88 @@ class GaltonBoardSimulator {
         return Math.ceil(this.baseMaxActiveDice * scaleFactor);
     }
 
+    cleanupZombieDice() {
+        const currentTime = performance.now();
+        if (currentTime - this.lastZombieCheckTime < this.zombieCheckInterval) {
+            return 0;
+        }
+        this.lastZombieCheckTime = currentTime;
+
+        let zombieCount = 0;
+        const activeDice = this.activeDice;
+
+        for (let i = activeDice.length - 1; i >= 0; i--) {
+            const dice = activeDice[i];
+            let isZombie = false;
+            let reason = '';
+
+            // Check 1: Age > 15 seconds (beyond normal lifetime)
+            if (dice.spawnTime) {
+                const age = currentTime - dice.spawnTime;
+                if (age > 15000) {
+                    isZombie = true;
+                    reason = `age ${age.toFixed(0)}ms > 15000ms`;
+                }
+            }
+
+            // Check 2: Body not in physics world
+            if (!isZombie && dice.bodyAdded && !dice.physicsWorld.bodies.includes(dice.body)) {
+                isZombie = true;
+                reason = 'body not in physics world';
+            }
+
+            // Check 3: Mesh not in scene
+            if (!isZombie && dice.mesh && !this.scene.scene.children.includes(dice.mesh)) {
+                isZombie = true;
+                reason = 'mesh not in scene';
+            }
+
+            // Check 4: Invalid position (NaN or Infinity)
+            if (!isZombie && dice.body && dice.body.position) {
+                const pos = dice.body.position;
+                if (isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z) ||
+                    !isFinite(pos.x) || !isFinite(pos.y) || !isFinite(pos.z)) {
+                    isZombie = true;
+                    reason = 'invalid position (NaN/Infinity)';
+                }
+            }
+
+            // Check 5: Stuck at high Y without movement for too long (>10s)
+            if (!isZombie && dice.spawnTime && dice.body) {
+                const age = currentTime - dice.spawnTime;
+                const pos = dice.body.position;
+                const vel = dice.body.velocity;
+
+                if (age > 10000 && pos.y > 2 && vel.length() < 0.05 && dice.body.sleepState === CANNON.Body.SLEEPING) {
+                    isZombie = true;
+                    reason = `stuck sleeping above bin: y=${pos.y.toFixed(2)}, age=${(age/1000).toFixed(1)}s`;
+                }
+            }
+
+            // Check 6: Fallback - old dice that should have been removed (>12s)
+            if (!isZombie && dice.spawnTime) {
+                const age = currentTime - dice.spawnTime;
+                if (age > 12000) {
+                    isZombie = true;
+                    reason = `fallback age ${age.toFixed(0)}ms > 12000ms`;
+                }
+            }
+
+            if (isZombie) {
+                console.warn(`[ZOMBIE] Removing zombie dice: ${reason}, y: ${dice.body.position.y.toFixed(2)}, sleeping: ${dice.body.sleepState === CANNON.Body.SLEEPING}`);
+                dice.remove();
+                activeDice.splice(i, 1);
+                zombieCount++;
+            }
+        }
+
+        if (zombieCount > 0) {
+            console.log(`[ZOMBIE] Removed ${zombieCount} zombie dice(s), remaining: ${activeDice.length}`);
+        }
+
+        return zombieCount;
+    }
+
     getScaledSpawnInterval() {
         if (this.physicsTimeScale <= 1) {
             return this.baseSpawnInterval;
@@ -240,6 +330,7 @@ class GaltonBoardSimulator {
             const spawnPos = this.galtonBoard.getSpawnPosition();
 
             setTimeout(() => {
+                console.log(`[MAIN] Adding dice to activeDice, total: ${this.activeDice.length + 1}`);
                 dice.spawn(spawnPos.x, spawnPos.y, spawnPos.z, this.physicsTimeScale);
                 this.activeDice.push(dice);
             }, i * CONFIG.dice.spawnInterval);
@@ -294,6 +385,10 @@ class GaltonBoardSimulator {
         }
         this.physicsTimeScale = speed;
         this.physicsValueElement.textContent = speed.toFixed(1) + 'x';
+
+        this.activeDice.forEach(dice => {
+            dice.physicsTimeScale = speed;
+        });
     }
 
     clearDice() {
@@ -318,23 +413,42 @@ class GaltonBoardSimulator {
 
         this.physics.step(deltaTime, this.physicsTimeScale);
 
-        this.activeDice.forEach(dice => {
-            dice.update();
+        // Single pass: update, record results, and filter in one operation
+        const beforeCount = this.activeDice.length;
+        this.activeDice = this.activeDice.filter(dice => {
+            try {
+                dice.update();
 
-            if (dice.isSettled() && dice.getResult() !== null && !dice.resultRecorded) {
-                const result = dice.getResult();
-                this.statistics.addRoll(result);
-                this.allResults.push(result);
-                this.updateResultsDisplay();
-                dice.resultRecorded = true;
-            }
+                // Record result BEFORE checking removal - only when dice is in bin
+                const isInBin = dice.body.position.y < 2;
+                if (dice.isSettled() && isInBin && dice.getResult() !== null && !dice.resultRecorded) {
+                    const result = dice.getResult();
+                    this.statistics.addRoll(result);
+                    this.allResults.push(result);
+                    this.updateResultsDisplay();
+                    dice.resultRecorded = true;
+                }
 
-            if (dice.shouldRemove()) {
+                if (dice.shouldRemove()) {
+                    console.log(`[MAIN] Removing dice, age: ${dice.spawnTime ? ((performance.now() - dice.spawnTime) / 1000).toFixed(1) + 's' : 'N/A'}`);
+                    dice.remove();
+                    return false;  // Remove from array
+                }
+                return true;  // Keep in array
+            } catch (e) {
+                console.error('[MAIN] Error processing dice:', e);
                 dice.remove();
+                return false;  // Remove errored dice
             }
         });
+        const afterCount = this.activeDice.length;
 
-        this.activeDice = this.activeDice.filter(dice => !dice.shouldRemove());
+        if (beforeCount !== afterCount) {
+            console.log(`[MAIN] Dice count: ${beforeCount} -> ${afterCount}, removed: ${beforeCount - afterCount}`);
+        }
+
+        // Cleanup zombie dice
+        this.cleanupZombieDice();
 
         this.scene.render();
     }
